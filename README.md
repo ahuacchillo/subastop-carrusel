@@ -122,7 +122,9 @@ pestaña del navegador, o cierra la anterior con `Ctrl-C`.
 
 **El primer render del día se demora bastante más.** Remotion descarga su propio
 Chrome headless la primera vez (~150 MB) y bundlea sin caché. A partir del
-segundo, un carrusel entero sale en 10-15 s.
+segundo, un carrusel entero sale en **5 s** en esta máquina: `ajustar.sh` llama a
+`remotion/render.mjs`, que bundlea y abre el navegador una sola vez para los tres
+slides. Por el CLI, que hacía las dos cosas por slide, eran 10 s.
 
 Si `npx remotion` se queja de librerías del sistema (típico en un Linux recién
 instalado):
@@ -183,7 +185,7 @@ contenedor sí corre, y bien. Medido dentro de la imagen de este repo:
 
 | | |
 |---|---|
-| Carrusel completo (3 slides + placa) | **13 s** |
+| Carrusel completo (3 slides + placa) | **13 s** (medido antes de `render.mjs`) |
 | Memoria en reposo | **141 MiB** |
 | **Pico durante el render** | **704 MiB** |
 | Imagen, con Chromium horneado | ~1.5 GB |
@@ -200,7 +202,8 @@ todavía.
 
 ### El Dockerfile que quedó
 
-Está construido y probado —el render de 13 s de la tabla salió de él— pero no
+Está construido y probado —el render de 13 s de la tabla salió de él, con el
+camino viejo del CLI— pero no
 está en uso. Es la salida de emergencia el día que se decida exponerlo:
 
 ```bash

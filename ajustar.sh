@@ -34,32 +34,15 @@ if [ "$MODO" != "--render" ]; then
 fi
 
 # ── Render ───────────────────────────────────────────────────────────────────
-# One props JSON per slide. Built with python rather than a heredoc because the
-# values carry apostrophes (25') and accents, which break a heredoc silently.
-PROPS="$(mktemp -d)"
-trap 'rm -rf "$PROPS"' EXIT
-SLIDES="$(DATOS="$DATOS" DESTINO="$PROPS" python3 - <<'PY'
-import json, os
-datos = json.load(open(os.environ["DATOS"]))
-for i in range(len(datos["fotos"])):
-    with open(f"{os.environ['DESTINO']}/{i}.json", "w") as f:
-        json.dump({"s": datos, "indice": i}, f, ensure_ascii=False)
-print(len(datos["fotos"]))
-PY
-)"
+# `remotion/render.mjs` hace el trabajo: un bundle y un navegador para todo el
+# carrusel. Por el CLI era uno de cada cosa por slide — medido en esta máquina,
+# 9.9 s contra 5.4 s, y los PNG salen byte-idénticos.
+SLIDES="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["fotos"]))' "$DATOS")"
 
 echo
 echo "── Renderizando $SLIDES slides ───────────────────────────────"
-# ponytail: one bundle per slide (~13s each). If that ever hurts, switch to the
-# Node API (@remotion/renderer), which bundles once for all of them.
 cd remotion
-for i in $(seq 0 $((SLIDES - 1))); do
-  npx remotion still Auto \
-    --props="$PROPS/$i.json" \
-    --output="$RAIZ/Posts/$SLUG/$((i + 1)).png" \
-    --overwrite --log=error
-  echo "  ✓ Posts/$SLUG/$((i + 1)).png"
-done
+node render.mjs "$DATOS" "$RAIZ/Posts/$SLUG"
 
 # ── Closing card ─────────────────────────────────────────────────────────────
 # Always last and always verbatim: it never goes through Remotion, carries no
