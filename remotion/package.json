@@ -6,6 +6,7 @@
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
+    "@remotion/bundler": "4.0.506",
     "@remotion/cli": "4.0.506",
     "@remotion/google-fonts": "4.0.506",
     "@remotion/tailwind-v4": "4.0.506",
