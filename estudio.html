@@ -1,0 +1,878 @@
+<!doctype html>
+<meta charset="utf8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Studio · VMC Subastas</title>
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   Plus Jakarta Sans — the typeface of the VOYAGER system. The tool speaks in
+   the same voice as the pieces it produces. Served locally, never from a CDN.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@font-face {
+  font-family: "Jakarta";
+  src: url("/fuente") format("woff2");
+  font-weight: 400 800;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* Dark with a violet cast rather than gray: the surround must not skew how
+     the car photo's own color reads, since that is what is being judged. */
+  --bg:        #0E0B14;
+  --panel:     #151020;
+  --raised:    #1C1529;
+  --raised-2:  #241B35;
+  --line:      #2A2038;
+  --line-soft: #211930;
+
+  --ink:   #EDE9F5;
+  --ink-2: #9A90B4;          /* 6:1 on --panel */
+
+  --violet:   #8460E5;
+  --violet-2: #AE8EFF;
+  --orange:   #ED8936;       /* reserved: the cover badge, nothing else */
+  --green:    #4ADE9B;
+  --red:      #F87171;
+
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 20px; --s6: 24px; --s7: 32px;
+
+  --r2: 8px; --r3: 12px; --r4: 16px;
+
+  --shadow:  0 8px 24px -10px rgba(0,0,0,.75);
+  --lift:    0 18px 44px -18px rgba(0,0,0,.9);
+  --ease:    cubic-bezier(.16,1,.3,1);
+}
+
+* { box-sizing: border-box; margin: 0; }
+[hidden] { display: none !important; }
+
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 15px/1.5 "Jakarta", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;              /* one view: the page itself never scrolls */
+}
+
+::selection { background: var(--violet); color: #fff; }
+:focus-visible { outline: 2px solid var(--violet-2); outline-offset: 2px; border-radius: var(--r2); }
+
+.rail-body { overflow-y: auto; overscroll-behavior: contain;
+             scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+
+/* ── Frame ────────────────────────────────────────────────────────────────── */
+.app { height: 100%; display: grid; grid-template-rows: auto 1fr; }
+
+.topbar {
+  position: relative;
+  display: flex; align-items: center; gap: var(--s5);
+  padding: var(--s3) var(--s5);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+/* Indeterminate sweep while the render runs — the one place a wait is long
+   enough that a static label reads as a freeze. It loops on purpose: the
+   render is a subprocess with no progress to report, and every honest
+   indeterminate indicator loops. It only exists while `body.busy`. */
+.topbar::after {
+  content: ""; position: absolute; inset-inline: 0; inset-block-end: -1px;
+  height: 2px; background: linear-gradient(90deg, transparent, var(--violet-2), transparent);
+  transform: translateX(-100%); opacity: 0;
+}
+body.busy .topbar::after { opacity: 1; animation: sweep 1.1s linear infinite; }
+@keyframes sweep { to { transform: translateX(100%); } }
+
+.brand { display: flex; align-items: baseline; gap: var(--s2); flex: none; }
+.brand b { font-weight: 800; font-size: 20px; letter-spacing: -.03em; }
+.brand span { color: var(--ink-2); font-size: 13px; }
+
+.lookup { display: flex; align-items: center; gap: var(--s2); flex: none; }
+.lookup input { width: 250px; }
+
+.status {
+  flex: 1; min-width: 0; color: var(--ink-2); font-size: 13px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.status.ok   { color: var(--green); }
+.status.bad  { color: var(--red); }
+.status.busy { color: var(--violet-2); }
+
+/* Photos · stage · details. The stage leads. */
+.board { display: grid; grid-template-columns: 268px minmax(0, 1fr) 296px; min-height: 0; }
+
+.rail { display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
+.rail.left  { border-right: 1px solid var(--line); }
+.rail.right { border-left: 1px solid var(--line); }
+
+.rail-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--s2); padding: var(--s4) var(--s4) var(--s2);
+}
+.rail-head h2 {
+  font-size: 11px; font-weight: 700; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--ink-2);
+}
+.rail-body { flex: 1; padding: var(--s2) var(--s4) var(--s5); }
+
+/* The caption shares the rail with the details, under its own heading: it
+   belongs next to the slides, and it only shows once there is a carousel. */
+.copy-head { border-block-start: 1px solid var(--line); padding-block-start: var(--s4); }
+.copy-state { font-size: 12px; color: var(--ink-2); }
+.copy-body { display: grid; gap: var(--s2); padding: 0 var(--s4) var(--s5); }
+.copy-body textarea {
+  width: 100%; min-height: 34vh; resize: vertical; padding: var(--s3);
+  background: var(--raised); border: 1px solid var(--line);
+  border-radius: var(--r2); color: var(--ink);
+  font: 400 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.copy-body textarea:hover { border-color: #362b4a; }
+.copy-actions { display: flex; gap: var(--s2); }
+
+/* ── Controls ─────────────────────────────────────────────────────────────── */
+input[type=text] {
+  width: 100%; padding: 9px var(--s3);
+  background: var(--raised); border: 1px solid var(--line);
+  border-radius: var(--r2); color: var(--ink); font: inherit;
+  transition: border-color .15s, background .15s;
+}
+input[type=text]:hover { border-color: #362b4a; }
+input[type=text]::placeholder { color: var(--ink-2); }
+
+button {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 6px; white-space: nowrap;
+  padding: 9px var(--s4); border: 1px solid transparent;
+  border-radius: var(--r2); cursor: pointer;
+  font: 600 15px "Jakarta", system-ui, sans-serif; color: var(--ink);
+  background: var(--raised);
+  transition: background .15s, border-color .15s, color .15s;
+}
+button:hover:not(:disabled) { background: var(--raised-2); }
+button:disabled { opacity: .38; cursor: not-allowed; }
+button.primary { background: var(--violet); color: #fff; }
+button.primary:hover:not(:disabled) { background: #9270ef; }
+button.ghost { background: transparent; border-color: var(--line); color: var(--ink-2); }
+button.ghost:hover:not(:disabled) { background: var(--raised); color: var(--ink); }
+button.small { padding: 6px 10px; font-size: 13px; }
+
+svg.icon { width: 15px; height: 15px; flex: none; }
+
+/* ── Photos ───────────────────────────────────────────────────────────────── */
+.gallery { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s2); }
+
+.thumb {
+  position: relative; aspect-ratio: 1; border-radius: var(--r3);
+  overflow: hidden; cursor: pointer; background: var(--raised);
+  border: 1px solid var(--line-soft);
+  transition: border-color .15s, box-shadow .2s;
+}
+.thumb:hover { border-color: #493a63; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block;
+             transition: opacity .2s; }
+.thumb:not(.picked) img { opacity: .55; }
+.thumb:hover img { opacity: 1; }
+.thumb.picked { border-color: var(--violet); }
+.thumb.current { box-shadow: 0 0 0 2px var(--violet-2); }
+
+.thumb .rank {
+  position: absolute; inset-block-start: 6px; inset-inline-start: 6px;
+  min-width: 22px; height: 22px; padding: 0 6px; border-radius: 7px;
+  background: var(--violet); color: #fff;
+  display: grid; place-items: center; font: 700 13px "Jakarta", sans-serif;
+  box-shadow: 0 2px 8px -2px rgba(0,0,0,.85);
+}
+.thumb .cover {
+  position: absolute; inset-block-end: 0; inset-inline: 0;
+  background: var(--orange); color: #fff; padding: 3px;
+  font: 700 11px "Jakarta", sans-serif; letter-spacing: .08em; text-align: center;
+}
+
+.dropzone {
+  border: 1px dashed var(--line); border-radius: var(--r3);
+  padding: var(--s6) var(--s4); text-align: center;
+  color: var(--ink-2); font-size: 13px;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.rail.left.dragging { background: #1a1330; }
+.rail.left.dragging .dropzone { border-color: var(--violet); color: var(--ink); }
+
+/* ── Stage ────────────────────────────────────────────────────────────────── */
+.stage-col {
+  display: grid; grid-template-rows: auto 1fr auto; min-height: 0;
+  padding: var(--s4) var(--s6) var(--s5);
+}
+
+.stage-head { display: flex; align-items: center; gap: var(--s4); padding-block-end: var(--s3); }
+.tabs { display: flex; gap: 6px; }
+.tabs button { width: 34px; height: 34px; padding: 0; font-size: 13px; }
+.tabs button.on { background: var(--violet); color: #fff; }
+
+.zoombox { display: flex; align-items: center; gap: var(--s2); margin-inline-start: auto; }
+.zoombox label { color: var(--ink-2); font-size: 13px; }
+.zoombox output { font-variant-numeric: tabular-nums; font-size: 13px;
+                  color: var(--ink-2); min-width: 42px; }
+input[type=range] { width: 128px; accent-color: var(--violet); }
+input[type=range]:disabled { accent-color: var(--line); opacity: .5; }
+.zoombox:has(:disabled) label, .zoombox:has(:disabled) output { opacity: .5; }
+
+/* A soft pool of light so the artwork sits in a space, not on a flat field. */
+.stage {
+  position: relative; display: grid; place-items: center; min-height: 0;
+}
+.stage::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(58% 58% at 50% 46%, rgba(132,96,229,.13), transparent 72%);
+}
+
+#frame {
+  position: relative; height: 100%; aspect-ratio: 1; max-width: 100%;
+  overflow: hidden; border-radius: var(--r4); background: #000;
+  cursor: grab; touch-action: none; user-select: none; box-shadow: var(--lift);
+}
+#frame.dragging { cursor: grabbing; }
+#photo { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+
+/* Guides: where the title and the data card land. Not the render. */
+.guide {
+  position: absolute; border: 1px dashed rgba(255,255,255,.42);
+  background: rgba(8,5,16,.34); border-radius: 6px; pointer-events: none;
+  display: grid; place-items: center; text-align: center;
+  font: 600 11px "Jakarta", sans-serif; letter-spacing: .04em;
+  color: rgba(255,255,255,.82);
+}
+.guide.round { border-radius: 50%; }
+
+.blank {
+  position: relative;
+  display: grid; align-content: center; justify-items: center; gap: var(--s2);
+  height: 100%; aspect-ratio: 1; max-width: 100%;
+  border: 1px dashed var(--line); border-radius: var(--r4);
+  color: var(--ink-2); text-align: center; padding: var(--s7);
+}
+.blank b { color: var(--ink); font-size: 15px; font-weight: 700; }
+.blank span { font-size: 13px; }
+
+.hint { padding-block-start: var(--s3); color: var(--ink-2); font-size: 13px; text-align: center; }
+kbd {
+  font: 600 11px "Jakarta", sans-serif; padding: 1px 5px; border-radius: 5px;
+  background: var(--raised); border: 1px solid var(--line); color: var(--ink-2);
+}
+
+/* ── Result ───────────────────────────────────────────────────────────────── */
+/* The four slides take the same square footprint as the frame, so the eye
+   does not have to re-settle between framing and reviewing. Slides are 1:1
+   and so are the cells, so `cover` crops nothing. */
+.result {
+  position: relative;
+  height: 100%; aspect-ratio: 1; max-width: 100%; min-height: 0;
+  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+  gap: var(--s2);
+}
+.result figure {
+  position: relative; min-height: 0; overflow: hidden;
+  border-radius: var(--r3); background: var(--panel); box-shadow: var(--shadow);
+  animation: rise .45s var(--ease) both;
+}
+.result figure:nth-child(2) { animation-delay: .06s; }
+.result figure:nth-child(3) { animation-delay: .12s; }
+.result figure:nth-child(4) { animation-delay: .18s; }
+.result a { display: block; height: 100%; }
+.result img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.result figcaption {
+  position: absolute; inset-inline: 0; inset-block-end: 0;
+  display: flex; justify-content: space-between; gap: var(--s2);
+  padding: var(--s5) var(--s3) 7px;
+  font-size: 11px; font-weight: 600; color: rgba(255,255,255,.92);
+  background: linear-gradient(to top, rgba(8,5,16,.92), transparent);
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px) scale(.98); filter: blur(4px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* ── Details ──────────────────────────────────────────────────────────────── */
+.fields { display: grid; align-content: start; gap: var(--s3); }
+/* minmax(0,…) not 1fr: an <input> has its own min width and `1fr` would push
+   the second column out of the rail instead of letting it shrink. */
+.fields .pair { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: var(--s2); }
+.field, .field input { min-width: 0; }
+.field label {
+  display: block; margin-block-end: 5px;
+  font-size: 11px; font-weight: 600; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--ink-2);
+}
+.field.empty input { border-color: #4a2740; }
+
+/* ── Wide: spare width goes to the rails, not to the void ─────────────────── */
+@media (min-width: 1600px) {
+  .board { grid-template-columns: 348px minmax(0, 1fr) 340px; }
+  .gallery { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ── Short or narrow: one column, the page scrolls ────────────────────────── */
+@media (max-width: 1180px), (max-height: 620px) {
+  body { overflow: auto; }
+  .app { height: auto; min-height: 100%; }
+  .board { grid-template-columns: 1fr; }
+  .rail.left, .rail.right { border: 0; border-block-start: 1px solid var(--line); }
+  .rail-body { overflow: visible; }
+  .stage-col { padding: var(--s4); }
+  .stage { min-height: 0; }
+  #frame, .blank, .result { height: auto; width: min(100%, 68vh); }
+  .gallery { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); }
+  .topbar { flex-wrap: wrap; }
+  .status { order: 3; flex-basis: 100%; }
+  .lookup input { width: 200px; }
+}
+</style>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><b>Studio</b><span>VMC Subastas</span></div>
+
+    <form class="lookup" id="lookup" autocomplete="off">
+      <input type="text" id="code" placeholder="Auction code or link"
+             aria-label="Auction code or link" enterkeyhint="go">
+      <button type="submit" id="fetch">Fetch</button>
+      <button type="button" class="ghost" id="noCode">No code</button>
+    </form>
+
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+
+    <button class="primary" id="build" disabled>Generate carousel</button>
+    <button class="primary" id="download" hidden>
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 4v12m0 0l-4.5-4.5M12 16l4.5-4.5"/>
+        <path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/>
+      </svg>
+      Download carousel
+    </button>
+  </header>
+
+  <main class="board">
+    <!-- ── photos ── -->
+    <aside class="rail left" id="photoRail">
+      <div class="rail-head">
+        <h2>Photos</h2>
+        <button class="ghost small" id="pick">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/>
+            <path d="M4 17v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/>
+          </svg>
+          Upload
+        </button>
+      </div>
+      <div class="rail-body">
+        <div class="gallery" id="gallery"></div>
+        <p class="dropzone" id="dropzone">Paste a code above,<br>or drop your photos here</p>
+      </div>
+      <input type="file" id="files" accept="image/png,image/jpeg" multiple hidden>
+    </aside>
+
+    <!-- ── stage ── -->
+    <section class="stage-col">
+      <div class="stage-head">
+        <div class="tabs" id="tabs"></div>
+        <div class="zoombox">
+          <label for="zoom">Zoom</label>
+          <input type="range" id="zoom" min="1" max="3" step="0.02" value="1">
+          <output id="zoomOut">1.00×</output>
+          <button class="ghost small" id="recenter" title="Back to centre, no zoom">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="7.5"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3"/>
+            </svg>
+            Recentre
+          </button>
+        </div>
+      </div>
+
+      <div class="stage">
+        <div id="frame" hidden tabindex="0" role="application"
+             aria-label="Framing: drag to move, scroll to zoom, arrow keys to nudge">
+          <img id="photo" alt="">
+        </div>
+        <div class="blank" id="blank">
+          <b>Nothing to frame yet</b>
+          <span>Fetch an auction by its code, or upload your own photos.</span>
+        </div>
+        <div class="result" id="result" hidden></div>
+      </div>
+
+      <p class="hint" id="hint"></p>
+    </section>
+
+    <!-- ── details ── -->
+    <aside class="rail right">
+      <div class="rail-head"><h2>Car details</h2></div>
+      <div class="rail-body fields" id="fields"></div>
+      <div class="rail-head copy-head" id="copyHead" hidden>
+        <h2>Caption</h2>
+        <span class="copy-state" id="copyState"></span>
+      </div>
+      <div class="copy-body" id="copyBody" hidden>
+        <textarea id="copyText" spellcheck="false"
+                  placeholder="Posts/&lt;slug&gt;/copy.md — write it here, or let Claude fill it in and hit reload."></textarea>
+        <div class="copy-actions">
+          <button class="small" id="copyWrite"
+                  title="Claude writes it with the copy-subastas-vmc skill">Draft it</button>
+          <button class="ghost small" id="copyReload" title="Re-read copy.md from disk">Reload</button>
+          <button class="ghost small" id="copyCopy">Copy to clipboard</button>
+        </div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<script>
+// Real design coordinates, against the 1080×1080 frame.
+const GUIDES = [
+  { x: 45,     y: 49,     w: 372,    h: 104,    txt: "store" },
+  { x: 600,    y: 42,     w: 409.56, h: 188,    txt: "make and model", coverOnly: true },
+  { x: 45.19,  y: 515.22, w: 92.386, h: 92.386, txt: "", round: true, from: 1 },
+  { x: 942.42, y: 515.22, w: 92.386, h: 92.386, txt: "", round: true, notLast: true },
+  { x: 45,     y: 778.25, w: 353,    h: 51,     txt: "date" },
+  { x: 45,     y: 845,    w: 466,    h: 176,    txt: "car details" },
+  { x: 855.29, y: 952.32, w: 179.51, h: 66.69,  txt: "vmc" },
+];
+// Keys stay Spanish: they are the datos.json contract the renderer reads.
+const FIELDS = [
+  ["marca", "Make"], ["modelo", "Model"],
+  ["anio", "Year"], ["transmision", "Transmission"],
+  ["precio", "Starting price"], ["tienda", "Official store"],
+  ["fecha", "Date"], ["hora", "Time"],
+];
+const PAIRS = [["marca", "modelo"], ["anio", "transmision"], ["fecha", "hora"]];
+
+const S = { code: "", photos: [], picked: [], crops: {}, i: 0, slug: null };
+const $ = (id) => document.getElementById(id);
+const frame = $("frame"), photo = $("photo"), status = $("status");
+
+const say = (txt, kind = "") => { status.textContent = txt; status.className = "status " + kind; };
+const busy = (on) => document.body.classList.toggle("busy", on);
+const crop = (url) => (S.crops[url] ||= { foco: "50% 50%", escala: 1 });
+const pctOf = (s) => s.split(" ").map(parseFloat);
+const val = (k) => $("f-" + k).value.trim();
+
+// ── details ─────────────────────────────────────────────────────────────────
+{
+  const box = (k, label) => {
+    const d = document.createElement("div");
+    d.className = "field";
+    d.innerHTML = `<label for="f-${k}">${label}</label>
+                   <input type="text" id="f-${k}" autocomplete="off">`;
+    return d;
+  };
+  const labelOf = (k) => FIELDS.find((f) => f[0] === k)[1];
+  const paired = new Set(PAIRS.flat());
+  for (const [a, b] of PAIRS) {
+    const row = document.createElement("div");
+    row.className = "pair";
+    row.append(box(a, labelOf(a)), box(b, labelOf(b)));
+    $("fields").appendChild(row);
+  }
+  for (const [k, label] of FIELDS) if (!paired.has(k)) $("fields").appendChild(box(k, label));
+  FIELDS.forEach(([k]) => $("f-" + k).addEventListener("input", review));
+}
+const fill = (d) => FIELDS.forEach(([k]) => { if (d[k] != null) $("f-" + k).value = d[k]; });
+
+async function ask(route, body) {
+  const r = await fetch(route, { method: "POST", body: JSON.stringify(body) });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error);
+  return j;
+}
+
+// ── the caption ─────────────────────────────────────────────────────────────
+// The file on disk is the source of truth, not this textarea: Claude writes
+// Posts/<slug>/copy.md from the terminal today and an API will write the same
+// file tomorrow. Reload pulls whatever is there; typing here writes it back.
+let copyTimer = null;
+
+async function loadCopy() {
+  if (!S.slug) return;
+  const r = await fetch(`/post/${S.slug}/copy.md?v=${Date.now()}`);
+  $("copyText").value = r.ok ? await r.text() : "";
+  $("copyState").textContent = r.ok ? "copy.md" : "not written yet";
+}
+
+function showCopy(on) {
+  $("copyHead").hidden = $("copyBody").hidden = !on;
+  if (on) loadCopy(); else $("copyText").value = "";
+}
+
+$("copyText").oninput = () => {
+  $("copyState").textContent = "saving…";
+  clearTimeout(copyTimer);
+  copyTimer = setTimeout(async () => {
+    try {
+      await ask("/copy", { slug: S.slug, texto: $("copyText").value });
+      $("copyState").textContent = "saved";
+    } catch (err) { $("copyState").textContent = "not saved: " + err.message; }
+  }, 600);
+};
+
+$("copyReload").onclick = loadCopy;
+
+// A minute or so: the skill is read and the caption written on the spot.
+$("copyWrite").onclick = async () => {
+  $("copyWrite").disabled = true;
+  $("copyState").textContent = "Claude is writing it…";
+  try {
+    await ask("/generar-copy", { slug: S.slug });
+    await loadCopy();
+  } catch (err) { $("copyState").textContent = "could not draft it: " + err.message; }
+  $("copyWrite").disabled = false;
+};
+
+$("copyCopy").onclick = async () => {
+  await navigator.clipboard.writeText($("copyText").value);
+  $("copyState").textContent = "copied";
+};
+
+// ── 1 · the auction ─────────────────────────────────────────────────────────
+$("lookup").onsubmit = async (e) => {
+  e.preventDefault();
+  const code = $("code").value.trim();
+  if (!code) return say("Enter the auction code, or paste its link.", "bad");
+  $("fetch").disabled = true; busy(true);
+  say("Reading the auction…", "busy");
+  try {
+    const j = await ask("/oferta", { codigo: code });
+    S.code = j.codigo; S.photos = j.fotos;
+    // Nothing preselected: which three go in, and in what order, is the one
+    // judgement call the tool must not make on your behalf.
+    S.picked = []; S.crops = {};
+    S.i = 0; S.slug = null;
+    fill(j.datos);
+    paintGallery(); paint();
+    say(`${j.fotos.length} photos from the listing. Pick 3 — tap order is carousel order.`, "ok");
+  } catch (err) { say(err.message, "bad"); }
+  $("fetch").disabled = false; busy(false);
+  review();
+};
+
+// Back to an empty page. Only the screen is cleared: Materiales/ and Posts/
+// keep everything, so a finished carousel is still there to reopen.
+function reset() {
+  Object.assign(S, { code: "", photos: [], picked: [], crops: {}, i: 0, slug: null });
+  FIELDS.forEach(([k]) => ($("f-" + k).value = ""));
+  $("code").value = "";
+  $("result").hidden = true;
+  $("result").innerHTML = "";
+  showCopy(false);
+  paintGallery(); paint(); review();
+}
+
+$("noCode").onclick = () => {
+  reset();
+  say("Upload your photos and fill the details in.");
+  $("f-marca").focus();
+};
+
+// ── 2 · the photos ──────────────────────────────────────────────────────────
+// Thumbnails are built once. Rebuilding them on every click restarts each
+// <img> download and cancels the one in flight, which leaves half the grid
+// hanging on a listing with a dozen photos.
+function paintGallery() {
+  const g = $("gallery");
+  g.innerHTML = "";
+  for (const f of S.photos) {
+    const d = document.createElement("div");
+    d.className = "thumb";
+    d.dataset.k = f.url;
+    d.tabIndex = 0;
+    d.setAttribute("role", "button");
+    // Removing works by clicking again. Nothing on screen says so, and a badge
+    // that only ever appears is read as permanent.
+    d.title = "Click to pick · click again to remove";
+    d.innerHTML = `<img src="${f.url}" alt="${f.archivo}">
+                   <div class="rank" hidden></div>
+                   <div class="cover" hidden>COVER</div>`;
+    d.onclick = () => choose(f.url);
+    d.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); choose(f.url); } };
+    g.appendChild(d);
+  }
+  $("dropzone").hidden = S.photos.length > 0;
+  mark();
+}
+
+/** Badges only — never touches the <img> elements. */
+function mark() {
+  for (const d of document.querySelectorAll(".thumb")) {
+    const n = S.picked.indexOf(d.dataset.k);
+    d.classList.toggle("picked", n >= 0);
+    d.classList.toggle("current", n === S.i && n >= 0);
+    d.setAttribute("aria-pressed", n >= 0);
+    const rank = d.querySelector(".rank");
+    rank.hidden = n < 0;
+    rank.textContent = n + 1;
+    d.querySelector(".cover").hidden = n !== 0;
+  }
+}
+
+// A click appends to the order; clicking again removes it.
+function choose(url) {
+  const n = S.picked.indexOf(url);
+  if (n >= 0) S.picked.splice(n, 1);
+  else if (S.picked.length < 3) S.picked.push(url);
+  else return say("Three already picked. Remove one to swap it.", "bad");
+  if (S.i >= S.picked.length) S.i = Math.max(0, S.picked.length - 1);
+  paint(); review();
+}
+
+$("pick").onclick = () => $("files").click();
+$("files").onchange = (e) => { upload([...e.target.files]); e.target.value = ""; };
+
+// The whole rail is a drop target: dragging in from the file manager is the
+// fastest way to hand the tool your own shots.
+const rail = $("photoRail");
+["dragenter", "dragover"].forEach((ev) => rail.addEventListener(ev, (e) => {
+  e.preventDefault(); rail.classList.add("dragging");
+}));
+["dragleave", "drop"].forEach((ev) => rail.addEventListener(ev, (e) => {
+  if (ev === "dragleave" && rail.contains(e.relatedTarget)) return;
+  rail.classList.remove("dragging");
+}));
+rail.addEventListener("drop", (e) => {
+  e.preventDefault();
+  upload([...e.dataTransfer.files].filter((f) => f.type.startsWith("image/")));
+});
+
+async function upload(files) {
+  if (!files.length) return;
+  busy(true);
+  say(`Uploading ${files.length} photo${files.length > 1 ? "s" : ""}…`, "busy");
+  try {
+    for (const f of files) {
+      const datos = await new Promise((res, rej) => {
+        const fr = new FileReader();
+        fr.onload = () => res(fr.result.split(",")[1]);
+        fr.onerror = () => rej(new Error(`Could not read ${f.name}`));
+        fr.readAsDataURL(f);
+      });
+      const j = await ask("/subir", { codigo: S.code, nombre: f.name, datos });
+      if (!S.photos.some((p) => p.url === j.foto.url)) S.photos.push(j.foto);
+    }
+    paintGallery(); paint();
+    say("Photos uploaded.", "ok");
+  } catch (err) { say(err.message, "bad"); }
+  busy(false);
+  review();
+}
+
+// ── 3 · the framing ─────────────────────────────────────────────────────────
+function paint() {
+  const any = S.picked.length > 0;
+  const showingResult = !$("result").hidden;
+
+  $("tabs").innerHTML = "";
+  S.picked.forEach((_, n) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = n + 1;
+    b.className = n === S.i && !showingResult ? "on" : "";
+    b.title = n === 0 ? "Cover" : `Slide ${n + 1}`;
+    b.onclick = () => { $("result").hidden = true; S.i = n; paint(); };
+    $("tabs").appendChild(b);
+  });
+  if (S.slug) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = "✓";
+    b.className = showingResult ? "on" : "";
+    b.title = "Back to the generated carousel";
+    b.onclick = () => { $("result").hidden = false; paint(); };
+    $("tabs").appendChild(b);
+  }
+
+  // Once a carousel exists, taking it away is the next move — so it is the one
+  // that carries the weight, and generating again (after reframing) steps back.
+  $("download").hidden = !S.slug;
+  $("build").classList.toggle("primary", !S.slug);
+  $("build").classList.toggle("ghost", !!S.slug);
+
+  // On the result view the zoom has nothing to act on, so it leaves rather
+  // than sitting there offering something that does nothing.
+  document.querySelector(".zoombox").hidden = showingResult;
+  $("zoom").disabled = !any;
+  $("recenter").disabled = !any;
+  frame.hidden = !any || showingResult;
+  $("blank").hidden = any || showingResult;
+  $("hint").hidden = showingResult;
+  $("hint").innerHTML = any
+    ? 'Drag to move · scroll to zoom · <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> to nudge'
+    : "The dashed guides show where the title and the data card land.";
+
+  if (!any || showingResult) return;
+
+  const url = S.picked[S.i], a = crop(url);
+  if (photo.getAttribute("src") !== url) {
+    photo.src = url;
+    photo.alt = (S.photos.find((f) => f.url === url) || {}).archivo || "";
+  }
+  photo.style.objectPosition = a.foco;
+  if (a.escala === 1) { photo.style.transform = ""; photo.style.transformOrigin = ""; }
+  else { photo.style.transform = `scale(${a.escala})`; photo.style.transformOrigin = a.foco; }
+  $("zoom").value = a.escala;
+  $("zoomOut").value = Number(a.escala).toFixed(2) + "×";
+  guides();
+  mark();
+}
+
+function guides() {
+  frame.querySelectorAll(".guide").forEach((g) => g.remove());
+  const last = S.picked.length - 1;
+  for (const g of GUIDES) {
+    if (g.coverOnly && S.i !== 0) continue;
+    if (g.from !== undefined && S.i < g.from) continue;
+    if (g.notLast && S.i >= last) continue;
+    const d = document.createElement("div");
+    d.className = "guide" + (g.round ? " round" : "");
+    d.style.cssText = `left:${g.x / 10.8}%;top:${g.y / 10.8}%;` +
+                      `width:${g.w / 10.8}%;height:${g.h / 10.8}%`;
+    d.textContent = g.txt;
+    frame.appendChild(d);
+  }
+}
+
+// How far the crop can travel: what the square crop leaves over (a landscape
+// photo spills sideways and not at all vertically) plus what the zoom adds.
+function travel() {
+  const side = frame.clientWidth, w = photo.naturalWidth, h = photo.naturalHeight;
+  if (!w || !h) return { x: 0, y: 0 };
+  const cover = Math.max(side / w, side / h);
+  const extra = side * (crop(S.picked[S.i]).escala - 1);
+  return { x: w * cover - side + extra, y: h * cover - side + extra };
+}
+
+const clamp = (v) => Math.min(100, Math.max(0, v));
+function setFocus(px, py) {
+  crop(S.picked[S.i]).foco = clamp(px).toFixed(1) + "% " + clamp(py).toFixed(1) + "%";
+  paint();
+}
+
+let drag = null;
+frame.addEventListener("pointerdown", (e) => {
+  if (!S.picked.length) return;
+  drag = { x: e.clientX, y: e.clientY, foco: pctOf(crop(S.picked[S.i]).foco), range: travel() };
+  frame.setPointerCapture(e.pointerId);
+  frame.classList.add("dragging");
+});
+frame.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const a = crop(S.picked[S.i]);
+  const dx = (e.clientX - drag.x) / a.escala;
+  const dy = (e.clientY - drag.y) / a.escala;
+  setFocus(drag.range.x ? drag.foco[0] - dx / drag.range.x * 100 : drag.foco[0],
+           drag.range.y ? drag.foco[1] - dy / drag.range.y * 100 : drag.foco[1]);
+});
+const release = () => { drag = null; frame.classList.remove("dragging"); };
+frame.addEventListener("pointerup", release);
+frame.addEventListener("pointercancel", release);
+
+frame.addEventListener("wheel", (e) => {
+  if (!S.picked.length) return;
+  e.preventDefault();
+  const a = crop(S.picked[S.i]);
+  a.escala = Math.min(3, Math.max(1, +(a.escala - e.deltaY * 0.0015).toFixed(3)));
+  paint();
+}, { passive: false });
+
+// Arrow keys nudge the crop: a mouse cannot land on a single percent.
+frame.addEventListener("keydown", (e) => {
+  if (!S.picked.length) return;
+  const step = e.shiftKey ? 5 : 1;
+  const [px, py] = pctOf(crop(S.picked[S.i]).foco);
+  const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+  const m = moves[e.key];
+  if (!m) return;
+  e.preventDefault();
+  setFocus(px + m[0], py + m[1]);
+});
+
+$("zoom").oninput = () => {
+  if (!S.picked.length) return;
+  crop(S.picked[S.i]).escala = +$("zoom").value;
+  paint();
+};
+$("recenter").onclick = () => {
+  S.crops[S.picked[S.i]] = { foco: "50% 50%", escala: 1 };
+  paint();
+};
+
+// ── 4 · generate ────────────────────────────────────────────────────────────
+function review() {
+  const missing = FIELDS.filter(([k]) => !val(k));
+  FIELDS.forEach(([k]) =>
+    $("f-" + k).closest(".field").classList.toggle("empty", !val(k) && S.picked.length > 0));
+  $("build").disabled = !S.picked.length || missing.length > 0;
+  if (status.classList.contains("bad") || status.classList.contains("busy")) return;
+  if (!S.photos.length) say("Start with the auction code, or upload your photos.");
+  else if (!S.picked.length) say("Pick the carousel photos.");
+  else if (missing.length) say("Still missing: " + missing.map(([, l]) => l.toLowerCase()).join(", "));
+  else if (!status.classList.contains("ok")) say("Ready to generate.");
+}
+
+$("build").onclick = async () => {
+  $("build").disabled = true; busy(true);
+  $("build").textContent = "Generating…";
+  say("Rendering the carousel…", "busy");
+  try {
+    const j = await ask("/generar", {
+      codigo: S.code,
+      datos: Object.fromEntries(FIELDS.map(([k]) => [k, val(k)])),
+      fotos: S.picked.map((url) => {
+        const f = S.photos.find((x) => x.url === url);
+        return { archivo: f.archivo, carpeta: f.carpeta, ...crop(url) };
+      }),
+    });
+    S.slug = j.slug;
+    $("result").innerHTML = j.slides.map((u, n) => `
+      <figure>
+        <a href="${u}" target="_blank" rel="noopener"><img src="${u}" alt="Slide ${n + 1}"></a>
+        <figcaption><span>${n + 1 === j.slides.length ? "Closing card" : "Slide " + (n + 1)}</span>
+        <span>${n + 1}.png</span></figcaption>
+      </figure>`).join("");
+    $("result").hidden = false;
+    showCopy(true);
+    paint();
+    say(`Done · Posts/${j.slug}/ · check them before publishing`, "ok");
+  } catch (err) { say("Could not generate: " + err.message, "bad"); }
+  $("build").textContent = "Generate carousel";
+  $("build").disabled = false; busy(false);
+};
+
+// An <a download> and not location.href: a navigation that lands on an error
+// would take the whole page's state with it, and this one runs after the work.
+$("download").onclick = () => {
+  const slug = S.slug;
+  const a = document.createElement("a");
+  a.href = "/descargar/" + slug;
+  a.download = "";                     // the server names it: <slug>.zip
+  a.click();
+  reset();
+  say(`${slug}.zip downloaded · ready for the next one`, "ok");
+};
+
+// ── reopening a finished carousel ───────────────────────────────────────────
+(async () => {
+  const j = await (await fetch("/inicio")).json();
+  if (!j.slug) { paintGallery(); paint(); review(); return; }
+  S.code = j.codigo; S.photos = j.fotos;
+  S.picked = j.elegidas; S.crops = j.ajustes; S.slug = j.slug;
+  fill(j.datos);
+  paintGallery(); paint(); review(); showCopy(true);
+  say(`${j.slug} · reframe it and generate again`, "ok");
+})();
+</script>

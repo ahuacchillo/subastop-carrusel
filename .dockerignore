@@ -1,0 +1,22 @@
+# The build context: only what the image needs.
+#
+# node_modules is rebuilt inside the image (a host build is linux-x64 already,
+# but copying 630 MB into the context makes every build crawl), and the photos
+# and renders are regenerated from an auction code.
+node_modules
+**/node_modules
+.git
+__pycache__
+**/__pycache__
+Posts
+remotion/public/autos
+.claude
+.agents
+
+# Materiales: fuera las fotos de cada subasta y el material de trabajo suelto,
+# dentro la placa de cierre, que ajustar.sh copia al final de cada carrusel.
+# Ojo: aquí `Materiales/*/` NO significa "solo carpetas" como en .gitignore —
+# docker excluye también los archivos sueltos, y el carrusel sale sin placa.
+Materiales/*
+!Materiales/cierre.png
+!Materiales/*.svg

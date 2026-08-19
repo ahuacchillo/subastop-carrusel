@@ -1,0 +1,20 @@
+# Qué se sube a Cloud Build. Sin este archivo gcloud improvisa uno desde
+# .gitignore, y ahí se cuelan los 15 MB de material suelto de Materiales/.
+#
+# Espeja a .dockerignore: lo que el contenedor no necesita, tampoco necesita
+# viajar. node_modules se reconstruye dentro de la imagen.
+.git
+.gitignore
+node_modules
+**/node_modules
+__pycache__
+**/__pycache__
+Posts
+remotion/public/autos
+.claude
+.agents
+
+# De Materiales solo la placa de cierre, que ajustar.sh copia al final.
+Materiales/*
+!Materiales/cierre.png
+!Materiales/*.svg
