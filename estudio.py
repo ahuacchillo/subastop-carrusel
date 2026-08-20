@@ -275,6 +275,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             _, _, slug, archivo = ruta.split("/", 3)
             return self.archivo(
                 os.path.join(POSTS, seguro(slug), seguro(archivo)), POSTS)
+        if ruta == "/cuenta":
+            ahora = time.time()
+            filas = publicar_mod.leer()
+            return self.json({
+                "esperando": sum(1 for f in filas if f["estado"] == "programado"),
+                "atrasados": sum(1 for f in filas if f["estado"] == "programado"
+                                 and f["cuando"] < ahora - 300),
+                "fallidos": sum(1 for f in filas if f["estado"] == "error")})
         if ruta == "/agenda":
             return self.responder(200, "text/html; charset=utf8",
                                   self.agenda().encode("utf8"))
@@ -361,8 +369,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         carpeta = codigo if os.path.isdir(os.path.join(MATERIALES, codigo)) else ""
         fotos += [{"archivo": f, "carpeta": carpeta, "url": f"/foto/{carpeta}/{f}"}
                   for f in listar(os.path.join(MATERIALES, carpeta))] if carpeta else []
+        # Los renders que ya existen, para que la pestana del carrusel muestre el
+        # carrusel y no una pantalla vacia. Sin esto, reabrir ofrece publicar algo
+        # que no esta a la vista.
+        slides = [f"/post/{SLUG_INICIAL}/{f}"
+                  for f in listar(os.path.join(POSTS, SLUG_INICIAL))
+                  if f.lower().endswith(".png")]
         return {
-            "slug": SLUG_INICIAL, "codigo": codigo,
+            "slug": SLUG_INICIAL, "codigo": codigo, "slides": slides,
             "fotos": fotos, "elegidas": elegidas, "ajustes": ajustes,
             "datos": {
                 "marca": d.get("marca", ""), "modelo": d.get("modelo", ""),
