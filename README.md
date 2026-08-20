@@ -418,6 +418,66 @@ el formato y el orden de fotos se eligen con lo que ya funcionó.
 
 ---
 
+## Publicar: el bucket ya está, el botón no
+
+Los PNG del estudio ya pueden llegar a Instagram por API. Falta el último tramo,
+las tres llamadas a la Graph API, pero la pieza que lo bloqueaba está hecha.
+
+```bash
+./bucket-crear.sh                       # una sola vez, crea el bucket
+python3 bucket.py 63015-toyota-yaris    # sube y escribe las URLs publicas
+```
+
+### Por qué hacía falta un bucket
+
+La Graph API **no acepta que le subamos los bytes** de una imagen: descarga cada
+una desde una URL pública que le pasamos. Y no sirve apuntarla al propio estudio:
+está entero detrás de una clave —escribe archivos y lanza un renderizador,
+abrirlo sería regalar las dos cosas— así que Meta no puede leer sus `/post/*.png`.
+El disco de la instancia, además, muere con ella.
+
+O sea que sin bucket la publicación automática no es difícil, es imposible. Es la
+razón por la que va primero y no después del botón.
+
+### Sube JPEG, no PNG
+
+**Instagram solo publica JPEG**; un PNG devuelve error. El render se queda en PNG
+—es el que se ve en pantalla y el que viaja en el ZIP, sin pérdida— y la
+conversión pasa en la subida, que es el único sitio que necesita el otro formato.
+Con `ffmpeg -q:v 2`, que ya está instalado por el pipeline de los reels.
+
+De paso pesa menos: un slide de 756 KB en PNG sale en 126 KB de JPEG. Seis veces
+menos que Meta tiene que descargar antes de publicar.
+
+### Lo que el bucket no arregla
+
+**El pendiente 2 sigue en pie.** Esto sube una copia para publicar; el estudio
+sigue sirviéndole al navegador los renders de su propio disco, así que con más de
+una instancia las miniaturas seguirían saliendo rotas. Mover *el estado de
+trabajo* al bucket es otro cambio, y subir cuatro archivos en cada ajuste de
+encuadre para arreglar un problema que hoy no tiene nadie es peor que el problema.
+
+### Las decisiones de dentro
+
+**Objetos de lectura pública.** Estas imágenes se publican en Instagram al minuto
+siguiente, así que su secreto dura eso. La alternativa, URLs firmadas, pide una
+llave RSA de servicio guardada en algún disco: ese sí es un secreto de verdad y
+con consecuencias de verdad si se filtra.
+
+**Se borran solos a los 7 días**, por una regla de ciclo de vida del bucket. Cero
+código de limpieza y cero tarea que olvidar: el original queda en `Posts/` y el
+publicado queda en Instagram, la copia del bucket no le sirve a nadie después.
+
+**El token sale del entorno, nunca de un archivo.** En Cloud Run lo da el servidor
+de metadatos; en una laptop, la sesión de `gcloud` que ya existe para desplegar.
+Ninguna llave de servicio en el repo.
+
+**El nombre del objeto es `<slug>/<n>.jpg`**, así que volver a renderizar la misma
+subasta sobreescribe en vez de acumular. Es lo que se quiere: lo último que se vio
+en pantalla es lo que se publica.
+
+---
+
 ## Pendientes
 
 Ordenados por lo que más duele.
