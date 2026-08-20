@@ -33,12 +33,16 @@ $GCLOUD storage buckets create "gs://$BUCKET" \
 $GCLOUD storage buckets add-iam-policy-binding "gs://$BUCKET" \
   --member=allUsers --role=roles/storage.objectViewer
 
-# Se borran solos a los 7 dias. Ningun codigo de limpieza que escribir, ninguna
+# Se borran solos a los 30 dias. Ningun codigo de limpieza que escribir, ninguna
 # tarea que se olvide: un carrusel ya publicado no le sirve a nadie en el bucket,
 # el original queda en Posts/ y el publicado queda en Instagram.
+#
+# 30 y no 7 por los programados: un post con hora para el jueves necesita que sus
+# imagenes sigan ahi el jueves. publicar.py corta la programacion en 21 dias, y
+# esos 9 de margen son para que el borrado nunca llegue antes que la publicacion.
 TMP="$(mktemp)"
 cat > "$TMP" <<'JSON'
-{"lifecycle":{"rule":[{"action":{"type":"Delete"},"condition":{"age":7}}]}}
+{"lifecycle":{"rule":[{"action":{"type":"Delete"},"condition":{"age":30}}]}}
 JSON
 $GCLOUD storage buckets update "gs://$BUCKET" --lifecycle-file="$TMP"
 rm -f "$TMP"

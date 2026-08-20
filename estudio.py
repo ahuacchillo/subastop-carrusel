@@ -18,6 +18,7 @@ computer can reach it — see ESTUDIO_HOST below for the container.
 """
 import base64
 import hmac
+import html
 import http.server
 import io
 import json
@@ -27,6 +28,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 import unicodedata
 import urllib.error
 import urllib.parse
@@ -35,6 +37,8 @@ import webbrowser
 import zipfile
 from datetime import date, datetime
 
+import bucket
+import publicar as publicar_mod
 import scraper
 
 RAIZ = os.path.dirname(os.path.abspath(__file__))
@@ -63,6 +67,42 @@ SKILL = os.path.join(RAIZ, ".claude", "skills",
 
 # Starting slug, set when reopening a finished carousel.
 SLUG_INICIAL = sys.argv[1].strip("/").removeprefix("Posts/") if len(sys.argv) > 1 else ""
+
+
+# La agenda, en su propia pagina y con su propio estilo minimo: hereda los
+# colores del estudio para que no parezca otra herramienta, y nada mas.
+AGENDA_HTML = """<!doctype html><meta charset=utf8>
+<title>Agenda — Estudio VMC</title>
+<style>
+ @font-face{font-family:Jakarta;src:url(/fuente) format("woff2");font-display:swap}
+ :root{color-scheme:dark;--bg:#0E0B14;--panel:#151020;--line:#2A2038;
+       --ink:#EDE9F5;--ink-2:#9A90B4;--violet:#AE8EFF;--green:#4ADE9B;
+       --red:#F87171;--orange:#ED8936}
+ body{margin:0;padding:40px 24px;background:var(--bg);color:var(--ink);
+      font:15px/1.55 Jakarta,system-ui,sans-serif}
+ main{max-width:780px;margin:0 auto}
+ h1{font-size:20px;font-weight:650;margin:0 0 4px}
+ p.sub{color:var(--ink-2);margin:0 0 26px;font-size:13.5px}
+ a{color:var(--violet)}
+ table{width:100%;border-collapse:collapse;background:var(--panel);
+       border:1px solid var(--line);border-radius:12px;overflow:hidden}
+ td{padding:11px 14px;border-top:1px solid var(--line);vertical-align:top}
+ tr:first-child td{border-top:0}
+ td.h{font-variant-numeric:tabular-nums;color:var(--ink-2);white-space:nowrap}
+ td.n{color:var(--ink-2);font-size:13.5px}
+ b{font-weight:600;font-size:12px;letter-spacing:.05em;text-transform:uppercase}
+ tr.publicado b{color:var(--green)}
+ tr.programado b{color:var(--violet)}
+ tr.atrasado b{color:var(--orange)}
+ tr.error b{color:var(--red)}
+</style>
+<main>
+ <h1>Agenda</h1>
+ <p class=sub>Lo publicado y lo que espera su hora. Un programado solo sale si
+ algo corre <code>publicar.py --pendientes</code>. &nbsp;<a href="/">volver al estudio</a></p>
+ <table>{filas}</table>
+</main>
+"""
 
 
 def cierre_de_subasta(fecha, hora, hoy):
@@ -235,9 +275,43 @@ class Handler(http.server.BaseHTTPRequestHandler):
             _, _, slug, archivo = ruta.split("/", 3)
             return self.archivo(
                 os.path.join(POSTS, seguro(slug), seguro(archivo)), POSTS)
+        if ruta == "/agenda":
+            return self.responder(200, "text/html; charset=utf8",
+                                  self.agenda().encode("utf8"))
         if ruta.startswith("/descargar/"):
             return self.descargar(seguro(ruta.split("/", 2)[2]))
         self.responder(404, "text/plain", b"no existe")
+
+    def agenda(self):
+        """Lo publicado y lo que espera, en una pagina sin javascript.
+
+        Se dibuja en el servidor porque la agenda es un archivo del servidor: sin
+        fetch, sin estado en el navegador, y recargar es la unica forma de que
+        este al dia — que para una lista que cambia cuatro veces al dia alcanza.
+        """
+        ahora = time.time()
+        filas = list(reversed(publicar_mod.leer()))
+        cuerpo = []
+        for f in filas:
+            estado = f["estado"]
+            # Programado y con la hora pasada no es programado: es que nadie
+            # corrio --pendientes. Decirlo aca es lo unico que evita descubrirlo
+            # tres dias despues, cuando el post no salio.
+            if estado == "programado" and f["cuando"] < ahora - 300:
+                estado, nota = "atrasado", ("nadie corrio --pendientes; "
+                                            "revisa el cron")
+            else:
+                nota = f["error"] or ""
+            enlace = (f'<a href="{html.escape(f["permalink"])}" target="_blank" '
+                      f'rel="noopener">ver el post</a>' if f["permalink"] else "")
+            cuerpo.append(
+                f'<tr class="{estado}"><td class="h">{publicar_mod.cuando_dice(f["cuando"])}</td>'
+                f'<td><b>{estado}</b></td><td>{html.escape(f["slug"])}</td>'
+                f'<td class="n">{enlace}{html.escape(nota)}</td></tr>')
+        if not cuerpo:
+            cuerpo = ['<tr><td colspan="4" class="n">Nada publicado ni programado '
+                      'todavia.</td></tr>']
+        return AGENDA_HTML.replace("{filas}", "\n".join(cuerpo))
 
     def descargar(self, slug):
         """The whole carousel as one ZIP, built in memory: four downloads in a
@@ -308,7 +382,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             cuerpo = json.loads(self.rfile.read(largo) or b"{}")
             accion = {"/oferta": self.oferta, "/subir": self.subir,
                       "/generar": self.generar, "/copy": self.copy,
-                      "/generar-copy": self.generar_copy}.get(self.path)
+                      "/generar-copy": self.generar_copy,
+                      "/publicar": self.publicar}.get(self.path)
             if not accion:
                 return self.responder(404, "text/plain", b"no existe")
             r = accion(cuerpo)
@@ -495,6 +570,36 @@ lleva comentarios tuyos.""",
         if r.returncode != 0:
             raise RuntimeError((r.stderr or r.stdout).strip()[-300:])
         return {}
+
+    def publicar(self, c):
+        """Sube al bucket y publica, o lo deja programado a una hora.
+
+        Publicar ya y programar son la misma cosa con distinta hora, asi que
+        comparten camino, archivo y pantalla: una sola cola, un solo registro.
+
+        La subida al bucket pasa aca y no a la hora de publicar. El disco de la
+        instancia no sobrevive a un reinicio, y un post programado para el jueves
+        no puede depender de que sigan existiendo los PNG del martes.
+        """
+        slug = seguro(str(c.get("slug", "")))
+        carpeta = os.path.join(POSTS, slug)
+        if not os.path.isdir(carpeta):
+            raise ValueError("Ese carrusel no existe todavía.")
+        texto = publicar_mod.caption(c.get("texto", ""))
+        if not texto:
+            raise ValueError("Falta el caption: sin él el post sale mudo.")
+        # El caption se guarda igual que con el botón de guardar. El archivo es
+        # la fuente de verdad, y lo que se publica tiene que quedar en el ZIP.
+        with open(os.path.join(carpeta, "copy.md"), "w", encoding="utf8") as f:
+            f.write(c.get("texto", ""))
+        urls = bucket.subir(slug, carpeta)
+        cuando = c.get("cuando")
+        fila = (publicar_mod.programar(slug, texto, urls, float(cuando)) if cuando
+                else publicar_mod.ahora(slug, texto, urls))
+        if fila["estado"] == "error":
+            raise RuntimeError(fila["error"])
+        return {"estado": fila["estado"], "permalink": fila["permalink"],
+                "cuando": publicar_mod.cuando_dice(fila["cuando"])}
 
     def copy(self, c):
         """Save the caption next to the slides. Whoever wrote it —a person, or

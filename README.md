@@ -418,15 +418,84 @@ el formato y el orden de fotos se eligen con lo que ya funcionó.
 
 ---
 
-## Publicar: el bucket ya está, el botón no
+## Publicar desde el estudio
 
-Los PNG del estudio ya pueden llegar a Instagram por API. Falta el último tramo,
-las tres llamadas a la Graph API, pero la pieza que lo bloqueaba está hecha.
+El carrusel sale al feed sin pasar por el teléfono. Dos botones y una hora.
 
 ```bash
-./bucket-crear.sh                       # una sola vez, crea el bucket
-python3 bucket.py 63015-toyota-yaris    # sube y escribe las URLs publicas
+export IG_TOKEN=$(grep '^IG_TOKEN=' ../../ig-comentarios/.env | cut -d= -f2-)
+./estudio.sh
 ```
+
+Con el carrusel hecho aparecen, al lado de *Download carousel* —que **sigue ahí**,
+es la única salida para lo que no va al feed—, tres cosas:
+
+- **Publish now** — sube los slides al bucket y publica. Verde, y no violeta como
+  el resto: es la única acción de la página que sale de la máquina y no se
+  puede deshacer.
+- **Una hora + Schedule** — lo mismo, con fecha. Escribe una línea en la cola.
+- **Agenda** — la lista de lo publicado y lo que espera, en `/agenda`.
+
+Por terminal, lo mismo:
+
+```bash
+./bucket-crear.sh                            # una sola vez, crea el bucket
+python3 publicar.py --ahora 63015-toyota-yaris
+python3 publicar.py --programar 63015-toyota-yaris "2026-08-22 18:30"
+python3 publicar.py --agenda
+```
+
+### Instagram no programa: la cola es nuestra
+
+Su API publica en el momento, y los contenedores que se le crean **caducan en 24
+horas**. Así que no hay a quién delegarle la hora: programar escribe una línea en
+`agenda.json` y los contenedores se crean recién al publicar.
+
+**Un programado solo sale si algo corre `publicar.py --pendientes`.** El estudio no
+sirve para eso: es una herramienta que se abre y se cierra, y a la hora del post lo
+más probable es que no esté encendida. Una línea de cron en la máquina que quede
+prendida, o Cloud Scheduler contra el servicio si algún día vive allá:
+
+```cron
+*/10 * * * * cd ~/Desktop/Subastop/Instagram/carrusel && \
+  IG_TOKEN=... python3 publicar.py --pendientes >> cron.log 2>&1
+```
+
+Mientras eso no exista, la agenda marca los vencidos como **atrasado** con el
+motivo escrito. Es la única forma de no enterarse tres días después de que el post
+nunca salió.
+
+### Publicar ya y programar son lo mismo
+
+Un post inmediato es un programado cuya hora es *ahora*. Comparten camino, archivo
+y pantalla, y por eso `agenda.json` es a la vez la cola **y** el registro de lo
+publicado: no hay dos verdades que puedan discrepar, y la pantalla que pediste para
+ver lo publicado salió del mismo archivo sin escribir nada aparte.
+
+Solo puede haber **un programado por subasta**: volver a programar el mismo
+carrusel reemplaza la línea anterior en vez de sumarse, porque dos filas pendientes
+del mismo slug publicarían el post dos veces.
+
+### El caption sale de una sección, no del archivo
+
+`copy.md` lleva el post del feed y el de WhatsApp, cada uno bajo su encabezado.
+Publicar el archivo entero mandaría el texto de WhatsApp y los títulos `## Instagram`
+dentro del caption, así que se recorta a esa sección. El archivo se guarda igual,
+completo, porque es lo que viaja en el ZIP.
+
+### Las imágenes se suben al programar, no al publicar
+
+Podría parecer al revés —subir a la hora del post, y no antes— pero el disco de la
+instancia no sobrevive a un reinicio. Un post con hora para el jueves no puede
+depender de que sigan existiendo los PNG del martes, así que al programar ya quedan
+en el bucket, que borra a los 30 días. Por eso `publicar.py` corta la programación
+en 21: nueve días de margen para que el borrado nunca llegue antes que la hora.
+
+### Los topes son de Meta
+
+De 2 a 10 imágenes por carrusel, 2200 caracteres de caption y 100 publicaciones
+por API cada 24 horas, donde un carrusel cuenta como una. Los tres primeros se
+comprueban antes de gastar una llamada; el último no nos toca ni de lejos.
 
 ### Por qué hacía falta un bucket
 
@@ -464,7 +533,7 @@ siguiente, así que su secreto dura eso. La alternativa, URLs firmadas, pide una
 llave RSA de servicio guardada en algún disco: ese sí es un secreto de verdad y
 con consecuencias de verdad si se filtra.
 
-**Se borran solos a los 7 días**, por una regla de ciclo de vida del bucket. Cero
+**Se borran solos a los 30 días**, por una regla de ciclo de vida del bucket. Cero
 código de limpieza y cero tarea que olvidar: el original queda en `Posts/` y el
 publicado queda en Instagram, la copia del bucket no le sirve a nadie después.
 

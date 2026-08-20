@@ -423,6 +423,23 @@ kbd {
   .status { order: 3; flex-basis: 100%; }
   .lookup input { width: 200px; }
 }
+
+/* ── publish ─────────────────────────────────────────────────────────────── */
+.publish { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2);
+           margin-top: var(--s2); }
+.publish .later { display: flex; align-items: center; gap: var(--s1); }
+.publish input[type=datetime-local] {
+  background: var(--raised); color: var(--ink); border: 1px solid var(--line);
+  border-radius: var(--r2); padding: 7px 9px; font: inherit; font-size: 13px;
+  color-scheme: dark;
+}
+.publish input[type=datetime-local]:focus { border-color: var(--violet); outline: none; }
+/* Verde y no violeta: es la única acción de la página que sale de la máquina y
+   no se puede deshacer. Tiene que leerse distinta a Generate y a Download. */
+.publish .go { background: var(--green); border-color: var(--green); color: #06231A; }
+.publish .go:hover:not(:disabled) { filter: brightness(1.08); }
+.publish .agenda { margin-left: auto; font-size: 13px; color: var(--ink-2); }
+.publish .agenda:hover { color: var(--violet-2); }
 </style>
 
 <div class="app">
@@ -447,6 +464,24 @@ kbd {
       </svg>
       Download carousel
     </button>
+
+    <!-- Publish and Schedule are the same action with a different time, so they
+         sit together and share one row. Download stays: it is still the way a
+         piece leaves for anywhere that is not the feed. -->
+    <div class="publish" id="publish" hidden>
+      <button class="primary go" id="publishNow">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 12l16-8-6 16-2.5-6.5z"/>
+        </svg>
+        Publish now
+      </button>
+      <div class="later">
+        <input type="datetime-local" id="publishAt" aria-label="Publish at">
+        <button class="ghost" id="publishLater">Schedule</button>
+      </div>
+      <a class="agenda" href="/agenda" target="_blank" rel="noopener">Agenda</a>
+    </div>
   </header>
 
   <main class="board">
@@ -678,6 +713,7 @@ function reset() {
   $("code").value = "";
   $("result").hidden = true;
   $("result").innerHTML = "";
+  $("publish").hidden = true;
   showCopy(false);
   paintGallery(); paint(); review();
 }
@@ -807,6 +843,7 @@ function paint() {
   // Once a carousel exists, taking it away is the next move — so it is the one
   // that carries the weight, and generating again (after reframing) steps back.
   $("download").hidden = !S.slug;
+  $("publish").hidden = !S.slug;
   $("build").classList.toggle("primary", !S.slug);
   $("build").classList.toggle("ghost", !!S.slug);
 
@@ -953,6 +990,7 @@ $("build").onclick = async () => {
         <span>${n + 1}.png</span></figcaption>
       </figure>`).join("");
     $("result").hidden = false;
+    $("publish").hidden = false;
     showCopy(true);
     paint();
     say(`Done · Posts/${j.slug}/ · check them before publishing`, "ok");
@@ -973,6 +1011,44 @@ $("download").onclick = () => {
   a.click();
   reset();
   say(`${slug}.zip downloaded · ready for the next one`, "ok");
+};
+
+
+// ── publishing ──────────────────────────────────────────────────────────────
+// Publish and Schedule go to the same endpoint: the only difference is whether
+// a time travels with the request. One path, one queue, one page to look at.
+async function send(cuando) {
+  const slug = S.slug;
+  if (!slug) return;
+  const botones = [$("publishNow"), $("publishLater")];
+  botones.forEach(b => b.disabled = true);
+  say(cuando ? "Scheduling…" : "Publishing to Instagram…");
+  try {
+    const r = await fetch("/publicar", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, texto: $("copyText").value, cuando }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || "unknown");
+    if (j.estado === "publicado") {
+      say(`Published · ${j.permalink || "check the feed"}`, "ok");
+      reset();
+    } else {
+      say(`Scheduled for ${j.cuando} · it only goes out if the cron runs`, "ok");
+      reset();
+    }
+  } catch (err) { say("Could not publish: " + err.message, "bad"); }
+  botones.forEach(b => b.disabled = false);
+}
+
+$("publishNow").onclick = () => send(null);
+
+$("publishLater").onclick = () => {
+  const v = $("publishAt").value;
+  if (!v) return say("Pick a date and time first", "bad");
+  const t = new Date(v).getTime() / 1000;   // el navegador resuelve la zona horaria
+  if (t < Date.now() / 1000) return say("That time already passed", "bad");
+  send(t);
 };
 
 // ── reopening a finished carousel ───────────────────────────────────────────
