@@ -10,8 +10,12 @@ __pycache__
 **/__pycache__
 Posts
 remotion/public/autos
-.claude
 .agents
+
+# The copy skill is data the studio reads, so it travels; the rest of
+# .claude is for Claude Code on the desktop and has no business here.
+.claude/*
+!.claude/skills
 
 # Materiales: fuera las fotos de cada subasta y el material de trabajo suelto,
 # dentro la placa de cierre, que ajustar.sh copia al final de cada carrusel.

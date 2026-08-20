@@ -28,9 +28,12 @@ import subprocess
 import sys
 import threading
 import unicodedata
+import urllib.error
 import urllib.parse
+import urllib.request
 import webbrowser
 import zipfile
+from datetime import date, datetime
 
 import scraper
 
@@ -51,8 +54,68 @@ HOST = os.environ.get("ESTUDIO_HOST", "127.0.0.1")
 PUERTO = int(os.environ.get("PORT") or os.environ.get("ESTUDIO_PUERTO") or 4173)
 CLAVE = os.environ.get("ESTUDIO_CLAVE", "")
 
+# Who writes the caption: with a key in the environment, a direct call to the
+# model's API; without it, the Claude CLI reading the skill. Both land in the
+# same `copy.md`, so the page cannot tell them apart.
+DEEPSEEK = os.environ.get("DEEPSEEK_API_KEY", "")
+SKILL = os.path.join(RAIZ, ".claude", "skills",
+                     "vmc-ig-copy-ficha-tecnica", "SKILL.md")
+
 # Starting slug, set when reopening a finished carousel.
 SLUG_INICIAL = sys.argv[1].strip("/").removeprefix("Posts/") if len(sys.argv) > 1 else ""
+
+
+def cierre_de_subasta(fecha, hora, hoy):
+    """The ⏰ line, written here instead of left to the model: asked to compare
+    with today it announced "La subasta es HOY 14 de agosto" for an auction six
+    days gone. `datos.json` carries a bare "14/08", so the year is this one.
+
+    >>> from datetime import date
+    >>> cierre_de_subasta("14/08", "1:05 pm", date(2026, 8, 14))
+    '⏰ La subasta es HOY 14 de agosto a la 1:05 p.m.'
+    >>> cierre_de_subasta("26/08", "10:20 am", date(2026, 8, 20))
+    '⏰ Cierre de subasta: Miércoles 26 de agosto | 10:20 a.m.'
+    >>> cierre_de_subasta("el jueves", "temprano", date(2026, 8, 20))
+    '⏰ Cierre de subasta: el jueves | temprano'
+    """
+    hora = hora.replace(" pm", " p.m.").replace(" am", " a.m.")
+    try:
+        f = datetime.strptime(f"{fecha}/{hoy.year}", "%d/%m/%Y").date()
+    except ValueError:
+        return f"⏰ Cierre de subasta: {fecha} | {hora}"  # a hand-typed date
+    mes = ("enero febrero marzo abril mayo junio julio agosto septiembre "
+           "octubre noviembre diciembre".split()[f.month - 1])
+    if f == hoy:
+        # "a la 1:15", "a las 10:20": the hour is always 1-something in
+        # practice, but the plural costs one conditional and reads right.
+        return (f"⏰ La subasta es HOY {f.day} de {mes} "
+                f"a la{'' if hora.startswith('1:') else 's'} {hora}")
+    dia = ("Lunes Martes Miércoles Jueves Viernes Sábado Domingo"
+           .split()[f.weekday()])
+    return f"⏰ Cierre de subasta: {dia} {f.day} de {mes} | {hora}"
+
+
+def deepseek(sistema, mensaje):
+    """One call to DeepSeek, which speaks the OpenAI shape. `urllib` is enough:
+    no SDK, so the project stays with no dependencies."""
+    cuerpo = json.dumps({
+        "model": "deepseek-chat",
+        "messages": [{"role": "system", "content": sistema},
+                     {"role": "user", "content": mensaje}],
+    }).encode()
+    pedido = urllib.request.Request(
+        "https://api.deepseek.com/chat/completions", data=cuerpo,
+        headers={"Content-Type": "application/json",
+                 "Authorization": f"Bearer {DEEPSEEK}"})
+    try:
+        with urllib.request.urlopen(pedido, timeout=180) as r:
+            texto = json.load(r)["choices"][0]["message"]["content"].strip()
+    except urllib.error.HTTPError as e:  # the body says what the status hides
+        raise RuntimeError(f"DeepSeek {e.code}: {e.read().decode()[:300]}") from None
+    # It hands the answer back inside a fence often enough to strip it here.
+    if texto.startswith("```"):
+        texto = texto.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+    return texto
 
 
 def seguro(nombre):
@@ -346,17 +409,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return {"slug": slug, "slides": [f"/post/{slug}/{p}?v={v}" for p in pngs]}
 
     def generar_copy(self, c):
-        """Have Claude write the caption with the `copy-subastas-vmc` skill.
+        """Write the caption with the `vmc-ig-copy-ficha-tecnica` skill.
 
-        It writes `copy.md` itself instead of printing it: asked for the text,
+        Two ways in, same file out. With DEEPSEEK_API_KEY the skill travels as
+        the system prompt and the answer is written here. Without it, the Claude
+        CLI writes `copy.md` itself instead of printing it: asked for the text,
         it answers with the text plus a note about what it did, and that note
         ends up in the file. The file is the contract, so the parsing problem
         disappears.
 
-        The §1 rule travels in the prompt on purpose. Without it the draft comes
-        back with "ágil", "económico de mantener", "de ciudad" — attributes
-        nobody gave it, which is the mistake the skill itself calls the most
-        repeated one."""
+        The no-invented-data rule travels in the prompt on purpose: DeepSeek
+        reading the skill alone fills the gap with mileage and a body style
+        nobody gave it, the mistake the skill calls its own worst. Adjectives in
+        the hook are a different thing and they are welcome — that part is what
+        the skill actually asks to be written."""
         slug = seguro(c.get("slug", ""))
         ruta = os.path.join(POSTS, slug, "datos.json")
         if not os.path.isfile(ruta):
@@ -364,32 +430,66 @@ class Handler(http.server.BaseHTTPRequestHandler):
         with open(ruta, encoding="utf8") as f:
             d = json.load(f)
         anio = d.get("anio", "").strip("'")
-        # Today's date travels too: the skill's urgency patterns say "HOY", and
-        # with no way to tell it would say it about an auction five days out.
-        from datetime import date
-        prompt = f"""Usa la skill copy-subastas-vmc y escribe el copy de esta subasta de VMC.
-
-Hoy es {date.today().strftime('%d/%m/%Y')}.
-
-Datos (son TODO lo que hay):
+        cierre = cierre_de_subasta(d.get("fecha", ""), d.get("hora", ""),
+                                   date.today())
+        # The WhatsApp opener is derived from that same line and never written
+        # again: the skill's template for the channel has "¡HOY [FECHA]!" baked
+        # in, and the model copied the HOY into a Wednesday six days out.
+        apertura = "⏰ ¡" + cierre.split(" ", 1)[1] + "! 🚨"
+        estado = ("SINIESTRADA (unidad chocada o recuperada)"
+                  if c.get("siniestrado") else "en buen estado")
+        datos = f"""Datos (son TODO lo que hay):
 - Marca y modelo: {d.get('marca', '')} {d.get('modelo', '')}
 - Año: {'20' + anio if anio else ''}
 - Transmisión: {d.get('transmision', '')}
 - Vendedor: {d.get('tienda', '')}
 - Precio base: {d.get('precioBase', '')}
-- Subasta: {d.get('fecha', '')} a la(s) {d.get('hora', '')}
+- Condición: {estado}
+
+La línea de cierre de subasta va LITERAL, esta y sin recalcular nada:
+
+{cierre}
+
+Y la apertura de la versión de WhatsApp va LITERAL, esta, aunque la plantilla de
+la skill diga HOY: si la línea no lo dice, no es hoy.
+
+{apertura}
 
 Reglas:
-- §1 al pie: NO inventes atributos, estado, condición ni demanda de mercado.
-- "HOY" solo si la subasta es hoy; si no, nombra el día que es.
-- Sin dato de kilometraje ni de estado: no los menciones ni los insinúes.
-- La ficha lleva solo las líneas cuyo dato exista, con los emojis estables de la skill.
+- No inventes DATOS: nada de kilometraje, combustible, tracción, color ni
+  dueños anteriores. Si no está en la lista de arriba, no existe. Ese hueco es
+  a propósito: es lo que obliga a entrar a vmcsubastas.com.
+- El gancho sí vende un beneficio, con el ángulo que la unidad sostenga: es el
+  trabajo creativo y sale de la librería de ángulos de la skill.
+- La condición de arriba manda el ángulo. Siniestrada va por rentabilidad de
+  reacondicionar, y no se esconde. En buen estado nunca se insinúa chocada.
+- Instagram en texto plano: sin negritas, cursivas ni markdown, que los muestra
+  como asteriscos. WhatsApp sí lleva negritas, con un solo asterisco (*texto*).
+- Sin pie de firma: nada de "link en BIO" ni "SUBASTOP S.A.C. / RUC"."""
+        entrega = """
+Dos secciones y nada más: un encabezado "## Instagram" y un encabezado
+"## WhatsApp", cada uno con su copy debajo. No pongas los rótulos "Versión
+para..." de la skill, que los encabezados ya dicen cuál es cuál."""
 
-Escribe el resultado en Posts/{slug}/copy.md con dos secciones, "## Instagram" y
-"## WhatsApp", y nada más: ese archivo es el entregable, no lleva comentarios tuyos."""
+        if DEEPSEEK:
+            with open(SKILL, encoding="utf8") as f:
+                receta = f.read()
+            texto = deepseek(receta, f"""{datos}
+{entrega}
+Esa respuesta es el entregable, no lleva comentarios tuyos.""")
+            with open(os.path.join(POSTS, slug, "copy.md"), "w", encoding="utf8") as f:
+                f.write(texto + "\n")
+            return {}
 
         r = subprocess.run(
-            ["claude", "-p", prompt, "--allowed-tools", "Skill", "Write",
+            ["claude", "-p", f"""Usa la skill vmc-ig-copy-ficha-tecnica y escribe el copy de esta subasta de VMC.
+
+{datos}
+{entrega}
+
+Escribe el resultado en Posts/{slug}/copy.md: ese archivo es el entregable, no
+lleva comentarios tuyos.""",
+             "--allowed-tools", "Skill", "Write",
              "--permission-mode", "acceptEdits"],
             cwd=RAIZ, capture_output=True, text=True, timeout=300)
         if r.returncode != 0:

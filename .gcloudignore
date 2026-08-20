@@ -11,8 +11,11 @@ __pycache__
 **/__pycache__
 Posts
 remotion/public/autos
-.claude
 .agents
+
+# The copy skill travels: the studio reads it as the system prompt.
+.claude/*
+!.claude/skills
 
 # De Materiales solo la placa de cierre, que ajustar.sh copia al final.
 Materiales/*
