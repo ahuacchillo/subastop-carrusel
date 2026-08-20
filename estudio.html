@@ -513,29 +513,32 @@ button.go:hover:not(:disabled) {
 }
 .deliver .agenda:hover { background: var(--raise); color: var(--ink); }
 /* Lo que espera su hora se cuenta donde ya se esta mirando: una cola que solo
-   se ve entrando a otra pagina no se mira, y un programado vencido no avisa. */
+   se ve entrando a otra pagina no se mira, y un programado vencido no avisa.
+   En rojo cuando algo se paso de hora o fallo: el ambar de esta hoja esta
+   reservado a la insignia de portada y nada mas. */
 .count {
   min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px;
   display: inline-grid; place-items: center;
   font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
   background: var(--raise-2); color: var(--ink);
 }
-.count.alert { background: var(--orange); color: #2A1405; }
+.count.alert { background: var(--red); color: #2A0B08; }
 
-/* Armado: el segundo clic publica. Ambar y no rojo — no es un error, es un
-   aviso, y el rojo de esta paleta significa que algo se rompio. */
+/* Armado: el segundo clic publica. Rojo, que en esta paleta es lo que exige
+   mirar antes de seguir, y no el ambar — que esta hoja reserva a la insignia de
+   portada. El verde vuelve en cuanto se desarma. */
 button.go.armed,
 /* El segmento del reloj se arma con el resto: es el mismo cuerpo, y medio boton
-   ambar con medio boton verde se lee como dos controles distintos. */
+   rojo con medio boton verde se lee como dos controles distintos. */
 .split:has(button.armed) > button.seg {
-  background: linear-gradient(180deg, #FFC46B, var(--orange) 60%, #C96A18);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 0 0 3px rgba(237,137,54,.22);
-  color: #2A1405;
+  background: linear-gradient(180deg, #FFA9A0, var(--red) 58%, #DC5F52);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.38), 0 0 0 3px rgba(248,113,113,.24);
+  color: #2A0B08;
 }
-.split:has(button.armed) > button.seg { border-inline-start-color: rgba(42,20,5,.24); }
+.split:has(button.armed) > button.seg { border-inline-start-color: rgba(42,11,8,.26); }
 
 .done {
-  display: inline-flex; align-items: center; gap: 7px;
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
   font-size: 13px; font-weight: 600; color: var(--green);
 }
 .done a { color: var(--green); text-decoration: underline; text-underline-offset: 3px; }
@@ -1243,13 +1246,16 @@ function hecho(j) {
   $("doneLink").hidden = !j.permalink;
   if (j.permalink) $("doneLink").href = j.permalink;
   $("done").hidden = false;
-  $("download").hidden = true;
-  document.querySelector(".sched").hidden = true;
+  // Publicado esconde el boton: el segundo clic seria un post duplicado en el
+  // feed. Programado no, porque cambiar de hora es normal y volver a programar
+  // reemplaza la fila anterior en vez de sumar otra. Descargar se queda en los
+  // dos casos: el ZIP sigue sirviendo despues de publicar.
+  document.querySelector(".sched").hidden = publicado;
+  desarmar();
 }
 
 function deshacerHecho() {
   $("done").hidden = true;
-  $("download").hidden = false;
   document.querySelector(".sched").hidden = false;
   desarmar();
 }
