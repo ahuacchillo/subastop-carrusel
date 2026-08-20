@@ -36,11 +36,19 @@ inglés** — las piezas que produce siguen en español.
 2×2. La pestaña `✓` vuelve al resultado, las numeradas vuelven al encuadre.
 Entre 10 y 15 segundos.
 
-- **Caption**, debajo de los datos — aparece recién con el carrusel hecho. Es
-  `Posts/<slug>/copy.md` en vivo: *Draft it* se lo pide a Claude con el skill
-  `copy-subastas-vmc` y deja las dos versiones, Instagram y Canal de WhatsApp
-  (unos 40 segundos). Lo que se escriba encima se guarda solo, *Reload* vuelve
-  a leer el archivo del disco y *Copy to clipboard* lo deja listo para pegar.
+- **Caption**, debajo de los datos — aparece recién con el carrusel hecho, y
+  **se escribe solo** en cuanto termina el render: no hay que pedirlo. Es
+  `Posts/<slug>/copy.md` en vivo: *Draft it* lo vuelve a escribir con el skill
+  `vmc-ig-copy-ficha-tecnica` y deja las dos versiones, Instagram y Canal de
+  WhatsApp (unos 40 segundos). El borrador automático sale siempre como unidad
+  en buen estado: si está **siniestrada**, marca *Wrecked* y dale *Draft it*
+  otra vez — es el único dato que la web no dice y el que decide el gancho
+  entero. Lo que se escriba encima se guarda solo, *Reload* vuelve a leer el
+  archivo del disco y *Copy* lo deja listo para pegar.
+
+  El copy no puede salir antes: la receta necesita `datos.json`, que se escribe
+  con el render. Por eso arranca cuando los slides ya están en pantalla y se va
+  llenando detrás, sin bloquear el botón.
 
 Después aparece *Download carousel*: baja los cuatro PNG y el `copy.md` en un
 solo ZIP (`<slug>.zip`) y **deja la página en cero** para la siguiente subasta — galería
@@ -414,7 +422,7 @@ el formato y el orden de fotos se eligen con lo que ya funcionó.
 
 Ordenados por lo que más duele.
 
-### 1. Generador de copys — hecho, con una dependencia nueva
+### 1. Generador de copys — hecho, por dos caminos
 
 El hueco ya no es entero. `Posts/<slug>/copy.md` existe, el estudio lo muestra
 al lado de los slides, se guarda solo y viaja en el ZIP:
@@ -426,11 +434,12 @@ Posts/<slug>/
 └── copy.md             ← caption de feed + Stories + hashtags
 ```
 
-La receta ya está fijada: `../.claude/skills/copy-subastas-vmc/SKILL.md` — léxico
-prohibido ("remate", "puja", "mejor postor"), estructura de ficha, patrones de
-titular y las reglas sobre el estado del vehículo, que es donde más se metió la
-pata. Hoy Claude la lee y deja las dos versiones (Instagram y Canal de
-WhatsApp) en `copy.md`; el estudio solo lo muestra.
+La receta está en `.claude/skills/vmc-ig-copy-ficha-tecnica/SKILL.md` — el formato
+"ficha técnica directa": gancho, línea de cierre, las tres líneas de ficha, link, y
+**sin** pie de firma legal. Vive dentro de `carrusel/` y no en el `.claude/` de la
+raíz por una razón práctica: el contexto de build de Cloud Run es esta carpeta, y
+desde afuera la skill no viajaría a la imagen. El estudio la lee como prompt de
+sistema y el CLI la encuentra igual, porque corre con `cwd` acá.
 
 `POST /generar-copy` arma el prompt con `datos.json` y llama al CLI de Claude
 (`claude -p … --allowed-tools Skill Write`), que lee la skill y **escribe el
@@ -438,32 +447,88 @@ archivo él mismo**. Es a propósito: pedirle el texto por stdout devuelve el
 texto más una nota de lo que hizo, y esa nota termina dentro del `copy.md`. El
 archivo es el contrato, y así no hay nada que parsear.
 
-La regla §1 viaja en el prompt aunque ya esté en la skill. Sin ella el borrador
-vuelve con "ágil", "económico de mantener", "de ciudad" — atributos que nadie
-dio, que es el error que la propia skill llama el más repetido.
+El prompt repite reglas que ya están en la skill. No sobra: cuál hace falta y
+por qué está más abajo, con el borrador que la trajo.
 
-Dos cosas que esto trae: el estudio ahora **depende del CLI de Claude** para ese
-botón (sin él, el resto sigue funcionando y el textarea se escribe a mano), y
-cuando haya API, se cambia el `subprocess.run` por la llamada y nada más — la
-página no se entera.
+Sin CLI ni clave, el resto del estudio sigue funcionando y el textarea se
+escribe a mano.
 
-**Pedido abierto: opción de API key.** Hoy el botón exige el CLI instalado y con
-sesión iniciada, lo que no sirve en el contenedor ni para nadie del equipo que
-no use Claude Code. Falta la bifurcación en `generar_copy()`:
+**Sin CLI: la clave de DeepSeek.** El botón ya no exige Claude Code. `generar_copy()`
+se bifurca por el entorno:
 
-- Con `ANTHROPIC_API_KEY` en el entorno → llamada directa a la API de Mensajes
-  (`claude-sonnet-5` alcanza para un caption), mandando el contenido de
-  `../.claude/skills/copy-subastas-vmc/SKILL.md` como prompt de sistema y los datos
-  de la subasta como mensaje. Con `urllib` de la stdlib basta: no hace falta el
-  SDK y el proyecto se queda sin dependencias.
-- Sin la variable → el `subprocess.run` del CLI que ya existe.
-- Sin ninguno de los dos → error claro en la página, no un traceback.
+- Con `DEEPSEEK_API_KEY` → llamada directa a `api.deepseek.com` (modelo
+  `deepseek-chat`), mandando `.claude/skills/vmc-ig-copy-ficha-tecnica/SKILL.md`
+  como prompt de sistema y los datos de la subasta como mensaje. Con `urllib` de
+  la stdlib basta: no hace falta el SDK y el proyecto se queda sin dependencias.
+- Sin la variable → el `subprocess.run` del CLI de Claude, que sigue igual.
 
-La respuesta se escribe en el mismo `copy.md`, así que la página no cambia. La
-clave va en el entorno —nunca en el repo— y en el contenedor viaja igual que
-`ESTUDIO_CLAVE`.
+Los dos caminos comparten el mismo bloque de datos y reglas del prompt, así que
+una corrección se hace una vez. La respuesta se escribe en el mismo `copy.md` y
+la página no se entera de quién la escribió. La clave va en el entorno —nunca en
+el repo— y en el contenedor viaja igual que `ESTUDIO_CLAVE`:
 
-### 2. Un bundle de Remotion por slide
+```bash
+export DEEPSEEK_API_KEY=sk-...
+./estudio.sh
+```
+
+`deepseek-chat` no obedece la skill como Claude, y lo que se le escapa siempre es
+el dato, nunca el gancho. Tres reglas que viajan en el prompt aunque ya estén en
+la skill, cada una por un borrador concreto:
+
+- **No inventes DATOS**, con los ausentes nombrados: kilometraje, combustible,
+  tracción, color, dueños anteriores. Sin eso los rellena, y ese hueco es la
+  razón del click a vmcsubastas.com.
+- **La línea de cierre va escrita, no deducida.** Pidiéndole comparar con hoy
+  anunció "La subasta es HOY 14 de agosto" para una subasta de seis días atrás.
+  Ahora `cierre_de_subasta()` arma la línea entera —día de la semana, mes en
+  palabras, `p.m.`, singular o plural— y el prompt la manda literal. Es un
+  bloque fijo de la skill de todas formas: el trabajo creativo es el gancho.
+  Tiene doctest, que es lo que ya cazó un `1:05 p.m..` con dos puntos:
+  `python3 -m doctest estudio.py`, sin salida es que pasa.
+- **La apertura de WhatsApp se deriva de esa misma línea**, no se escribe otra
+  vez. La plantilla del Canal en la skill trae `¡HOY [FECHA]!` cosido, y con la
+  fecha correcta en Instagram el modelo igual abrió el WhatsApp con "¡HOY 26 de
+  agosto!" para un miércoles a seis días. Dos strings que dicen la fecha son
+  dos oportunidades de que una mienta.
+- **Instagram en texto plano, WhatsApp con negritas de un asterisco.** Sin la
+  primera mitad escribe `**14/08**`, que IG muestra con los asteriscos; sin la
+  segunda pierde las negritas que el Canal sí renderiza.
+
+Lo que **no** se corrige: los adjetivos del gancho ("una mini SUV práctica",
+"altísima demanda comercial", "un precio de partida increíble"). Esos los pide la
+skill —son su librería de ángulos— y una versión anterior de este prompt los
+prohibía, heredado del formato viejo. Prohibirlos deja el caption sin gancho.
+
+**La condición no está en la web.** El scraper no trae si la unidad es
+siniestrada, y la skill dice que no se asuma buen estado por default: un choque
+no dicho que sale como "seminuevo" es el error más caro de este copy. Así que el
+dato lo pone la persona, con la casilla **Wrecked** junto a *Draft it*. Marcada,
+el gancho cambia de eje entero: de confiabilidad a rentabilidad de
+reacondicionar, y el CTA pasa a "Mira las fotos del estado real".
+Con eso el borrador sale publicable a la primera, en los dos canales y con las
+dos condiciones.
+
+### 2. Cloud Run corre con una sola instancia, y no es por plata
+
+`--max-instances 1` en `desplegar.sh` es correctitud, no ahorro. El estudio
+guarda las fotos y los PNG en el disco de su propia instancia, así que una
+segunda instancia atiende con el disco vacío. El navegador pide los cuatro
+slides y las ocho miniaturas en paralelo; con tres instancias, un tercio de
+esos pedidos cae en una que nunca renderizó nada y vuelve 404 — que en la
+página se ve como **imágenes rotas, unas sí y otras no**. Medido:
+
+```
+$ for f in 1 2 3 4 1 2 3 4 1 2 3 4; do curl -s -o /dev/null \
+    -w "%{http_code} " "$U/post/<slug>/$f.png" & done; wait
+404 404 404 404 200 200 200 200 200 200 200 200
+```
+
+Con una instancia el disco es siempre el mismo. `--concurrency 8` alcanza de
+sobra para una persona. El día que haya que compartirlo entre varios, el estado
+se va a un bucket y recién ahí vuelve a escalar.
+
+### 3. Un bundle de Remotion por slide
 
 Cada `npx remotion still` bundlea de nuevo. Se arregla pasando a la API de Node
 (`@remotion/renderer`), que bundlea una vez y renderiza los tres. Marcado con
@@ -471,13 +536,13 @@ Cada `npx remotion still` bundlea de nuevo. Se arregla pasando a la API de Node
 estudio, un carrusel entero sale en 9–14s. La primera ejecución del día es la
 lenta; después el caché de Remotion hace el trabajo.
 
-### 3. `../RESULTADOS.md` está vacío
+### 4. `../RESULTADOS.md` está vacío
 
 Ocho carruseles publicados, cero métricas anotadas. Sin esos números el criterio
 de portada es opinión. El experimento abierto es el orden de fotos: frontal →
 interior → 3/4 contra uno que abra en 3/4.
 
-### 4. Los reels no están en el pipeline
+### 5. Los reels no están en el pipeline
 
 Son otro producto con otro flujo, y desde el split viven en su propio árbol
 (`../reels/`, con su propio proyecto Remotion): se montan a mano y se renderizan
@@ -489,24 +554,24 @@ Lo que sigue pendiente: sus datos están quemados en una constante dentro del `.
 (`NEGOCIABLE`, `VENDER`, `VENDESOLO`). Merecen el mismo tratamiento que el carrusel:
 props por JSON y una entrada en el script.
 
-### 5. Solo vmcsubastas.com
+### 6. Solo vmcsubastas.com
 
 El scraping es específico de ese sitio. @subascars.pe no tiene scraper: ahí hay
 que usar el modo manual con fotos propias.
 
-### 6. El scraping es regex contra HTML
+### 7. El scraping es regex contra HTML
 
 Si vmcsubastas cambia el markup, se rompe. Falla ruidosamente (sale con "no
 trajo fotos") en vez de renderizar datos vacíos, que es lo importante, pero
 alguien va a tener que arreglar los patrones algún día.
 
-### 7. El carrusel está fijo en 3 slides
+### 8. El carrusel está fijo en 3 slides
 
 Instagram acepta 10. Tres es una decisión, no un límite técnico, pero está
 cableada en tres lugares (el `[:3]` del scraping, el `TODAS` del orden, y el
 guion visual de las flechas).
 
-### 8. El render no es 100% determinista
+### 9. El render no es 100% determinista
 
 Renderizar el mismo slide dos veces puede dar PNG distintos. Medido: la
 diferencia son ~2500 píxeles (0.2% de la imagen) concentrados en el texto de la
@@ -514,7 +579,7 @@ píldora de fecha — antialiasing, invisible a ojo. Es anterior a todo esto y n
 afecta lo publicado, pero significa que no se puede usar el md5 como prueba de
 que un cambio no rompió nada. Hay que mirar.
 
-### 9. Fotos y renders fuera del repo
+### 10. Fotos y renders fuera del repo
 
 `Materiales/<auto>/` y `Posts/` están en `.gitignore`: son 50 MB que se
 regeneran con el código de oferta. La consecuencia es que no hay historial
