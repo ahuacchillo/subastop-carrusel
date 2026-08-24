@@ -69,37 +69,102 @@ SKILL = os.path.join(RAIZ, ".claude", "skills",
 SLUG_INICIAL = sys.argv[1].strip("/").removeprefix("Posts/") if len(sys.argv) > 1 else ""
 
 
-# La agenda, en su propia pagina y con su propio estilo minimo: hereda los
-# colores del estudio para que no parezca otra herramienta, y nada mas.
+# La agenda, en su propia pagina y sin javascript, pero con la misma hoja que
+# el estudio: barra, superficies, insignias y tipografia. Es la otra vista del
+# mismo producto, y cruzar el enlace no puede sentirse como salir de el.
 AGENDA_HTML = """<!doctype html><meta charset=utf8>
 <title>Agenda — Estudio VMC</title>
 <style>
+ /* Los tokens son una copia de estudio.html y tienen que moverse con ella: son
+    dos documentos, no dos productos. Antes esta pagina habia derivado sola —su
+    --violet era el --violet-2 del estudio— y se notaba al cruzar el enlace. */
  @font-face{font-family:Jakarta;src:url(/fuente) format("woff2");font-display:swap}
- :root{color-scheme:dark;--bg:#0E0B14;--panel:#151020;--line:#2A2038;
-       --ink:#EDE9F5;--ink-2:#9A90B4;--violet:#AE8EFF;--green:#4ADE9B;
-       --red:#F87171;--orange:#ED8936}
- body{margin:0;padding:40px 24px;background:var(--bg);color:var(--ink);
-      font:15px/1.55 Jakarta,system-ui,sans-serif}
- main{max-width:780px;margin:0 auto}
- h1{font-size:20px;font-weight:650;margin:0 0 4px}
- p.sub{color:var(--ink-2);margin:0 0 26px;font-size:13.5px}
- a{color:var(--violet)}
- table{width:100%;border-collapse:collapse;background:var(--panel);
-       border:1px solid var(--line);border-radius:12px;overflow:hidden}
- td{padding:11px 14px;border-top:1px solid var(--line);vertical-align:top}
+ :root{color-scheme:dark;
+       --bg:#0E0B14;--ink:#EDE9F5;--ink-2:#9A90B4;
+       --violet:#8460E5;--violet-2:#AE8EFF;
+       --green:#4ADE9B;--red:#F87171;--orange:#ED8936;
+       --sheet:rgba(13,9,21,.78);--raise:rgba(38,29,56,.58);
+       --raise-2:rgba(52,40,76,.74);
+       --edge:rgba(255,255,255,.11);--edge-2:rgba(255,255,255,.20);
+       --frost:saturate(155%) blur(20px);
+       --lift:0 18px 44px -18px rgba(0,0,0,.9);
+       --scroll:rgba(174,142,255,.20);--scroll-2:rgba(174,142,255,.40)}
+ *{box-sizing:border-box;margin:0;scrollbar-width:thin;
+   scrollbar-color:var(--scroll) transparent}
+ body{min-height:100vh;color:var(--ink);
+      font:400 15px/1.55 Jakarta,system-ui,sans-serif;-webkit-font-smoothing:antialiased;
+      background:
+        radial-gradient(560px 760px at 3% 22%,rgba(132,96,229,.30),transparent 70%),
+        radial-gradient(520px 720px at 99% 30%,rgba(174,142,255,.22),transparent 70%),
+        radial-gradient(620px 420px at 8% 102%,rgba(174,142,255,.12),transparent 70%),
+        var(--bg)}
+ ::selection{background:var(--violet);color:#fff}
+ :focus-visible{outline:2px solid var(--violet-2);outline-offset:2px;border-radius:8px}
+
+ /* La misma barra que el estudio: cruzar el enlace no puede sentirse como
+    salir del producto. Antes se aterrizaba en una pagina desnuda y el camino
+    de vuelta era un enlace suelto al final de un parrafo, partido en dos
+    lineas. */
+ .topbar{display:flex;align-items:center;gap:16px;padding:12px 20px;
+         border-bottom:1px solid var(--edge);background:var(--sheet);
+         backdrop-filter:var(--frost);-webkit-backdrop-filter:var(--frost);
+         box-shadow:inset 0 1px 0 var(--edge-2),0 12px 32px -24px #000}
+ .brand{display:flex;align-items:baseline;gap:8px}
+ .brand b{font-weight:800;font-size:20px;letter-spacing:-.03em;
+          background:linear-gradient(100deg,var(--ink) 18%,var(--violet-2));
+          -webkit-background-clip:text;background-clip:text;color:transparent}
+ .brand span{color:var(--ink-2);font-size:13px}
+ .back{margin-inline-start:auto;display:inline-flex;align-items:center;gap:6px;
+       padding:9px 16px;border:1px solid var(--edge);border-radius:8px;
+       background:var(--raise);box-shadow:inset 0 1px 0 var(--edge-2);
+       backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+       font:600 15px Jakarta,system-ui,sans-serif;color:var(--ink);
+       text-decoration:none;transition:background .15s,border-color .15s}
+ .back:hover{background:var(--raise-2);border-color:var(--edge-2)}
+
+ main{max-width:860px;margin:0 auto;padding:40px 24px 64px}
+ h1{font-size:26px;font-weight:800;letter-spacing:-.02em;margin:0 0 6px}
+ p.sub{color:var(--ink-2);margin:0 0 24px;font-size:13.5px;max-width:62ch}
+ code{font:500 12.5px ui-monospace,SFMono-Regular,Menlo,monospace;
+      padding:2px 6px;border-radius:6px;background:var(--raise);
+      border:1px solid var(--edge);color:var(--ink);white-space:nowrap}
+
+ /* Panel sobre mesa iluminada, la misma profundidad que las slides del
+    estudio. Antes era un bloque plano que no se distinguia del fondo. */
+ table{width:100%;border-collapse:collapse;background:var(--sheet);
+       border:1px solid var(--edge);border-radius:16px;overflow:hidden;
+       box-shadow:var(--lift);
+       backdrop-filter:var(--frost);-webkit-backdrop-filter:var(--frost)}
+ td{padding:13px 16px;border-top:1px solid var(--edge);vertical-align:middle}
  tr:first-child td{border-top:0}
- td.h{font-variant-numeric:tabular-nums;color:var(--ink-2);white-space:nowrap}
+ tr:hover td{background:rgba(255,255,255,.022)}
+ td.h{font-variant-numeric:tabular-nums;color:var(--ink-2);white-space:nowrap;
+      font-size:13.5px;width:1%}
+ td.s{font-weight:600}
  td.n{color:var(--ink-2);font-size:13.5px}
- b{font-weight:600;font-size:12px;letter-spacing:.05em;text-transform:uppercase}
- tr.publicado b{color:var(--green)}
- tr.programado b{color:var(--violet)}
- tr.atrasado b{color:var(--orange)}
- tr.error b{color:var(--red)}
+ td.n a{color:var(--green);text-decoration:underline;text-underline-offset:3px}
+ td.n a:hover{color:var(--ink)}
+
+ /* La insignia de estado habla el mismo idioma que el contador de la barra del
+    estudio: pildora con canto propio y brillo arriba, no una palabra suelta. */
+ td b{display:inline-grid;place-items:center;min-width:19px;height:21px;
+   padding:0 9px;border-radius:11px;
+   font-weight:800;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+   background:var(--raise-2);border:1px solid var(--edge-2);
+   box-shadow:inset 0 1px 0 var(--edge-2);color:var(--ink-2)}
+ tr.publicado b{color:var(--green);border-color:rgba(74,222,155,.34)}
+ tr.programado b{color:var(--violet-2);border-color:rgba(174,142,255,.40)}
+ tr.atrasado b{color:var(--orange);border-color:rgba(237,137,54,.42)}
+ tr.error b{color:var(--red);border-color:rgba(248,113,113,.42)}
 </style>
+<header class=topbar>
+ <span class=brand><b>Studio</b><span>VMC Subastas</span></span>
+ <a class=back href="/">Volver al estudio</a>
+</header>
 <main>
  <h1>Agenda</h1>
  <p class=sub>Lo publicado y lo que espera su hora. Un programado solo sale si
- algo corre <code>publicar.py --pendientes</code>. &nbsp;<a href="/">volver al estudio</a></p>
+ algo corre <code>publicar.py --pendientes</code>.</p>
  <table>{filas}</table>
 </main>
 """
@@ -314,7 +379,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                       f'rel="noopener">ver el post</a>' if f["permalink"] else "")
             cuerpo.append(
                 f'<tr class="{estado}"><td class="h">{publicar_mod.cuando_dice(f["cuando"])}</td>'
-                f'<td><b>{estado}</b></td><td>{html.escape(f["slug"])}</td>'
+                f'<td><b>{estado}</b></td><td class="s">{html.escape(f["slug"])}</td>'
                 f'<td class="n">{enlace}{html.escape(nota)}</td></tr>')
         if not cuerpo:
             cuerpo = ['<tr><td colspan="4" class="n">Nada publicado ni programado '

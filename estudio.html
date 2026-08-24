@@ -54,13 +54,27 @@
        --raise    a control resting on a sheet
        --raise-2  the same control under the cursor
        --edge     the specular hairline along a lit top edge
-       --frost    the blur itself; saturate() keeps the violet from going gray */
-  --sheet:   rgba(21, 16, 32, .62);
+       --frost    the blur itself; saturate() keeps the violet from going gray
+
+     La hoja se oscurecio hasta quedar por debajo del escenario. Antes rails y
+     escenario caian en la misma luminancia y el ojo no tenia donde posarse: la
+     herramienta existe para mirar las slides, y las slides competian con los
+     paneles que las rodean. Ahora los paneles son la sala a oscuras. */
+  --sheet:   rgba(13, 9, 21, .78);
   --raise:   rgba(38, 29, 56, .58);
   --raise-2: rgba(52, 40, 76, .74);
-  --edge:    rgba(255, 255, 255, .07);
-  --edge-2:  rgba(255, 255, 255, .13);
+  /* Subieron con la hoja: estos dos numeros estaban calibrados contra un
+     --sheet mas claro, y al oscurecerlo el filete dejo de leerse. Un boton sin
+     canto no se ve como una tecla, se ve como texto flotando. */
+  --edge:    rgba(255, 255, 255, .11);
+  --edge-2:  rgba(255, 255, 255, .20);
   --frost:   saturate(155%) blur(20px);
+
+  /* La barra de scroll es del navegador, pero se ve dentro de la hoja: por
+     defecto entra en gris claro del sistema y es lo unico en pantalla que no
+     esta en la paleta. Va en el mismo violeta, translucida sobre riel vacio. */
+  --scroll:    rgba(174, 142, 255, .20);
+  --scroll-2:  rgba(174, 142, 255, .40);
 }
 
 * { box-sizing: border-box; margin: 0; }
@@ -88,8 +102,16 @@ body {
 ::selection { background: var(--violet); color: #fff; }
 :focus-visible { outline: 2px solid var(--violet-2); outline-offset: 2px; border-radius: var(--r2); }
 
-.rail-body { overflow-y: auto; overscroll-behavior: contain;
-             scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+/* Una sola vez para toda la pagina: los tres sitios que scrollean —el rail
+   derecho, el de fotos y el caption— llevaban tres reglas distintas, y dos de
+   ellas eran ninguna. Sin `::-webkit-scrollbar`: Chrome lo ignora en cuanto ve
+   las propiedades estandar, asi que ahi seria un bloque que no corre nunca. */
+* { scrollbar-width: thin; scrollbar-color: var(--scroll) transparent; }
+/* Se aclara con el puntero dentro del panel, no solo encima de la barra: a 6px
+   de ancho, apuntarle antes de verla es el orden equivocado. */
+.rail:hover, .rail-body:hover, textarea:hover { scrollbar-color: var(--scroll-2) transparent; }
+
+.rail-body { overflow-y: auto; overscroll-behavior: contain; }
 
 /* ── Frame ────────────────────────────────────────────────────────────────── */
 .app { height: 100%; display: grid; grid-template-rows: auto 1fr; }
@@ -125,7 +147,12 @@ body.busy .topbar::after { opacity: 1; animation: sweep 1.1s linear infinite; }
 }
 .brand span { color: var(--ink-2); font-size: 13px; }
 
-.lookup { display: flex; align-items: center; gap: var(--s2); flex: none; }
+/* El filete separa la identidad del trabajo. Es el mismo recurso que ya usaba
+   .deliver para separar construir de entregar: sin el, la barra era una fila
+   corrida donde la marca y el primer control se leian como un solo bloque. */
+.lookup { display: flex; align-items: center; gap: var(--s2); flex: none;
+          padding-inline-start: var(--s5);
+          border-inline-start: 1px solid var(--edge); }
 .lookup input { width: 250px; }
 
 /* Se queda con el hueco que sobra y se corta solo cuando de verdad no cabe.
@@ -156,29 +183,61 @@ body.busy .topbar::after { opacity: 1; animation: sweep 1.1s linear infinite; }
   display: flex; align-items: center; justify-content: space-between;
   gap: var(--s2); padding: var(--s4) var(--s4) var(--s2);
 }
+/* El titulo de un rail y la etiqueta de un campo eran la misma cosa: 11px, en
+   caps, en --ink-2. Un rail entero se leia como un muro de mayusculas sin
+   principio. El titulo sube a --ink y abre el interletrado; la etiqueta se
+   queda donde estaba, y con eso hay dos escalones donde habia uno. */
 .rail-head h2 {
-  font-size: 11px; font-weight: 700; letter-spacing: .09em;
-  text-transform: uppercase; color: var(--ink-2);
+  font-size: 12px; font-weight: 800; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--ink);
 }
 .rail-body { flex: 1; padding: var(--s2) var(--s4) var(--s5); }
 
-/* El rail derecho scrollea entero, en vez de que los datos y el caption sean
-   dos contenedores peleando por la altura. Con dos, el ultimo campo —Starting
-   price, el numero que decide la subasta— quedaba cortado a media fila y sin
-   nada que indicara que habia mas abajo. */
+/* El rail derecho no scrollea: reparte. Los datos y los dos encabezados toman
+   su alto natural —por eso Starting price no vuelve a quedar cortado a media
+   fila, que fue lo que rompio el primer intento de repartir— y el caption se
+   queda con lo que sobre. Antes el rail entero scrolleaba y el textarea
+   scrolleaba dentro: dos barras verticales en la misma columna, y la de fuera
+   existia por 77px.
+
+   El `min-height: 0` es lo que faltaba entonces: sin el, un hijo flex se niega
+   a encogerse por debajo de su contenido y desborda el rail en vez de repartir.
+
+   `overflow-y: auto` se queda de ultimo recurso: si la ventana es tan baja que
+   ni con el piso del textarea cabe, vuelve a scrollear. */
 .rail.right { overflow-y: auto; overscroll-behavior: contain; }
+.rail.right .rail-head { flex: none; }
 .rail.right .rail-body { flex: none; overflow: visible; }
-/* El caption ya no se come un tercio de la pantalla de alto fijo: crece con su
-   texto hasta un tope y de ahi scrollea el suyo. */
-.rail.right .copy-body textarea { min-height: 24vh; }
+.rail.right .copy-body { flex: 1; min-height: 0; }
+/* 96px son unas cinco lineas del monoespaciado: lo justo para leer el gancho,
+   que es lo que se revisa antes de publicar. Por debajo de eso el rail vuelve a
+   scrollear, porque encoger mas no deja nada legible. */
+.rail.right .copy-body textarea { flex: 1; min-height: 96px; }
 
 /* The caption shares the rail with the details, under its own heading: it
    belongs next to the slides, and it only shows once there is a carousel. */
-.copy-head { border-block-start: 1px solid var(--edge); padding-block-start: var(--s4); }
+.copy-head { border-block-start: 1px solid var(--edge); padding-block-start: var(--s4);
+             justify-content: flex-start; }
+.copy-head .cap-count { margin-inline-start: auto; }
+.capgrow { padding: 4px 7px; }
+.capgrow .shrink { display: none; }
+
+/* Abierto: el caption se queda con el rail entero. Los datos no se van a
+   ningun sitio —vuelven al cerrar—, y con el flex de arriba el textarea toma
+   el hueco sin que haga falta darle una altura. */
+.rail.right.solo-caption > .rail-head:first-child,
+.rail.right.solo-caption > .fields { display: none; }
+.rail.right.solo-caption .copy-head { border-block-start: 0; }
+.rail.right.solo-caption .capgrow .grow { display: none; }
+.rail.right.solo-caption .capgrow .shrink { display: inline; }
 .copy-state { font-size: 12px; color: var(--ink-2); }
-.copy-body { display: grid; gap: var(--s2); padding: 0 var(--s4) var(--s5); }
+.copy-body { display: flex; flex-direction: column; gap: var(--s2);
+             padding: 0 var(--s4) var(--s5); }
+.copy-body .copy-actions { flex: none; }
 .copy-body textarea {
-  width: 100%; min-height: 34vh; resize: vertical; padding: var(--s3);
+  /* `resize` fuera: el textarea ya ocupa todo el hueco que hay, asi que
+     arrastrarlo no tenia a donde crecer. Un tirador que no hace nada. */
+  width: 100%; min-height: 34vh; resize: none; padding: var(--s3);
   background: var(--raise); border: 1px solid var(--edge);
   border-radius: var(--r3); color: var(--ink);
   box-shadow: inset 0 1px 0 var(--edge), inset 0 10px 22px -18px #000;
@@ -286,7 +345,13 @@ svg.icon { width: 15px; height: 15px; flex: none; }
   font: 700 11px "Jakarta", sans-serif; letter-spacing: .08em; text-align: center;
 }
 
+/* Ocupa el rail entero en vez de ser un sello de 97px con 500 de vacio debajo.
+   No es solo relleno: el rail completo es la zona donde se sueltan las fotos,
+   asi que el area que lo dice tiene que medir lo mismo que el area que lo
+   acepta. Cuando llegan las fotos, la galeria se queda con el sitio. */
+.rail.left .rail-body { display: flex; flex-direction: column; }
 .dropzone {
+  flex: 1; display: grid; place-content: center;
   border: 1px dashed var(--edge-2); border-radius: var(--r3);
   background: var(--raise);
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
@@ -320,14 +385,23 @@ input[type=range] { width: 128px; accent-color: var(--violet); }
 input[type=range]:disabled { accent-color: var(--line); opacity: .5; }
 .zoombox:has(:disabled) label, .zoombox:has(:disabled) output { opacity: .5; }
 
-/* A soft pool of light so the artwork sits in a space, not on a flat field. */
+/* El charco de luz donde se para la pieza. Estaba puesto pero casi apagado —a
+   .13 sobre un fondo que ya es violeta no se veia—, asi que el escenario se
+   leia tan plano como los rails. Dos capas del mismo violeta: un nucleo corto
+   que marca donde cae la pieza, y una falda larga que lo funde con la sala. */
 .stage {
   position: relative; display: grid; place-items: center; min-height: 0;
 }
 .stage::before {
   content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(58% 58% at 50% 46%, rgba(132,96,229,.13), transparent 72%);
+  background:
+    radial-gradient(46% 46% at 50% 44%, rgba(174,142,255,.20), transparent 68%),
+    radial-gradient(82% 82% at 50% 48%, rgba(132,96,229,.11), transparent 74%);
+  transition: opacity .3s var(--ease);
 }
+/* Sin pieza encima, la luz no alumbra nada: se ve como una mancha en mitad de
+   la pantalla. Baja hasta que haya algo que iluminar. */
+.stage:has(.blank)::before { opacity: .38; }
 
 #frame {
   position: relative; height: 100%; aspect-ratio: 1; max-width: 100%;
@@ -372,13 +446,18 @@ kbd {
   position: relative;
   height: 100%; aspect-ratio: 1; max-width: 100%; min-height: 0;
   display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
-  gap: var(--s2);
+  /* Aire, no adorno: con --lift la sombra de cada slide mide mas que los 8px
+     que las separaban y las cuatro se emborronaban entre si. */
+  gap: var(--s3);
 }
+/* --lift y no --shadow: las cuatro slides son la pieza terminada y merecen la
+   misma profundidad que el encuadre del que salieron. Con la sombra corta se
+   quedaban pegadas al fondo, que es justo lo que no son. */
 .result figure {
   position: relative; min-height: 0; overflow: hidden;
   border-radius: var(--r3); background: var(--raise);
   border: 1px solid var(--edge);
-  box-shadow: var(--shadow), inset 0 1px 0 var(--edge-2);
+  box-shadow: var(--lift), inset 0 1px 0 var(--edge-2);
   animation: rise .45s var(--ease) both;
 }
 .result figure:nth-child(2) { animation-delay: .06s; }
@@ -516,13 +595,23 @@ button.go:hover:not(:disabled) {
    se ve entrando a otra pagina no se mira, y un programado vencido no avisa.
    En rojo cuando algo se paso de hora o fallo: el ambar de esta hoja esta
    reservado a la insignia de portada y nada mas. */
+/* Era una mancha de 17px con el mismo relleno que un boton en reposo: el unico
+   sitio donde la herramienta avisa que algo espera, y el mas facil de no ver.
+   Ahora tiene canto propio y cifras tabulares, y el rojo trae su halo — que en
+   una insignia de 19px es lo que la separa del texto que la rodea. */
 .count {
-  min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px;
+  min-width: 19px; height: 19px; padding: 0 6px; border-radius: 10px;
   display: inline-grid; place-items: center;
-  font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
+  font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums;
+  letter-spacing: .01em;
   background: var(--raise-2); color: var(--ink);
+  border: 1px solid var(--edge-2);
+  box-shadow: inset 0 1px 0 var(--edge-2);
 }
-.count.alert { background: var(--red); color: #2A0B08; }
+.count.alert {
+  background: var(--red); color: #2A0B08; border-color: rgba(255,255,255,.28);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.36), 0 4px 14px -6px rgba(248,113,113,.9);
+}
 
 /* Armado: el segundo clic publica. Rojo, que en esta paleta es lo que exige
    mirar antes de seguir, y no el ambar — que esta hoja reserva a la insignia de
@@ -537,10 +626,27 @@ button.go.armed,
 }
 .split:has(button.armed) > button.seg { border-inline-start-color: rgba(42,11,8,.26); }
 
+/* Mientras Instagram procesa: el anillo reemplaza al avion dentro del mismo
+   boton. La barra de la topbar dice que la pagina esta ocupada; esto dice cual
+   de los botones lo esta, que es lo que se mira mientras se espera. */
+.go .spin {
+  width: 15px; height: 15px; flex: none; border-radius: 50%;
+  border: 2px solid currentColor; border-block-start-color: transparent;
+  animation: turn .7s linear infinite;
+}
+@keyframes turn { to { transform: rotate(1turn); } }
+.go.sending .icon { display: none; }
+
 .done {
   display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
   font-size: 13px; font-weight: 600; color: var(--green);
+  animation: done-in .34s var(--ease) both;
 }
+/* El check se dibuja en vez de aparecer: es la confirmacion de lo unico que no
+   se puede deshacer, y merece el unico momento animado de la barra. */
+.done .icon path { stroke-dasharray: 22; animation: done-draw .45s var(--ease) .1s both; }
+@keyframes done-in   { from { opacity: 0; transform: translateY(5px); } }
+@keyframes done-draw { from { stroke-dashoffset: 22; } to { stroke-dashoffset: 0; } }
 .done a { color: var(--green); text-decoration: underline; text-underline-offset: 3px; }
 .done a:hover { color: var(--ink); }
 
@@ -593,6 +699,7 @@ button.go.armed,
                  stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M4.5 12L20 4.5l-7 15.5-2.4-6.1z"/>
             </svg>
+            <span class="spin" id="publishSpin" aria-hidden="true" hidden></span>
             <span id="publishLabel">Publish now</span>
           </button>
           <button class="primary go seg" id="schedToggle" aria-expanded="false"
@@ -620,7 +727,7 @@ button.go.armed,
       <!-- Lo publicado se queda a la vista con su enlace. La confirmacion de la
            unica accion irreversible de la pagina no puede ser un texto que el
            siguiente mensaje borra. -->
-      <p class="done" id="done" hidden>
+      <p class="done" id="done" role="status" hidden>
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M4.5 12.5l5 5 10-11"/>
@@ -702,6 +809,17 @@ button.go.armed,
         <h2>Caption</h2>
         <span class="copy-state" id="copyState"></span>
         <span class="cap-count" id="capCount"></span>
+        <!-- El caption comparte el rail con los datos, y en una columna de 340px
+             eso le deja unas seis lineas. Este boton se lo da entero para
+             leerlo, y lo devuelve. Los datos no se pierden: vuelven al cerrar. -->
+        <button class="ghost small capgrow" id="capGrow" aria-expanded="false"
+                title="Give the caption the whole rail">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path class="grow" d="M9 4H5v4M15 4h4v4M9 20H5v-4M15 20h4v-4"/>
+            <path class="shrink" d="M5 9h4V5M19 9h-4V5M5 15h4v4M19 15h-4v4"/>
+          </svg>
+        </button>
       </div>
       <div class="copy-body" id="copyBody" hidden>
         <textarea id="copyText" spellcheck="false"
@@ -743,7 +861,10 @@ const FIELDS = [
   ["precio", "Starting price"], ["tienda", "Official store"],
   ["fecha", "Date"], ["hora", "Time"],
 ];
-const PAIRS = [["marca", "modelo"], ["anio", "transmision"], ["fecha", "hora"]];
+// Precio y tienda tambien van de a dos: eran las dos ultimas filas a ancho
+// completo por dos valores cortos, y esa fila de mas se la come el caption.
+const PAIRS = [["marca", "modelo"], ["anio", "transmision"], ["fecha", "hora"],
+               ["precio", "tienda"]];
 
 const S = { code: "", photos: [], picked: [], crops: {}, i: 0, slug: null };
 const $ = (id) => document.getElementById(id);
@@ -818,6 +939,16 @@ $("copyText").oninput = () => {
 };
 
 $("copyReload").onclick = loadCopy;
+
+// El caption a rail completo y de vuelta. Es un interruptor y no un modal: se
+// sigue viendo el carrusel al lado, que es contra lo que se lee el texto.
+$("capGrow").onclick = () => {
+  const rail = document.querySelector(".rail.right");
+  const abierto = rail.classList.toggle("solo-caption");
+  $("capGrow").setAttribute("aria-expanded", abierto ? "true" : "false");
+  $("capGrow").title = abierto ? "Bring the car details back"
+                               : "Give the caption the whole rail";
+};
 
 // Half a minute or so: the skill travels as the system prompt and the caption
 // comes back written. It runs on its own once the render lands — a carousel
@@ -1154,7 +1285,10 @@ $("build").onclick = async () => {
     $("result").hidden = false;
     showCopy(true);
     paint();
-    say(`Done · Posts/${j.slug}/ · check them before publishing`, "ok");
+    // Sin la ruta: en verde y con barras se lee como un enlace, y no lleva a
+    // ningun sitio — el navegador no abre una carpeta. Las slides estan en
+    // pantalla, y quien quiera los archivos tiene el boton de Download.
+    say("Done · check the slides before publishing", "ok");
     draft();   // not awaited: the slides are up, the caption fills in behind
 
   } catch (err) { say("Could not generate: " + err.message, "bad"); }
@@ -1221,7 +1355,21 @@ async function send(cuando) {
   if (!slug) return;
   const botones = [$("publishNow"), $("publishLater")];
   botones.forEach(b => b.disabled = true);
-  say(cuando ? "Scheduling…" : "Publishing to Instagram…", "busy");
+  $("publishNow").classList.add("sending");
+  $("publishSpin").hidden = false;
+  busy(true);
+
+  // El contador no es adorno: Instagram procesa cada imagen del carrusel antes
+  // de dejar publicarlo, asi que esto tarda entre veinte y cuarenta segundos.
+  // Un rotulo fijo tanto rato se lee como colgado, y el reflejo es volver a
+  // hacer clic en lo unico que no se puede deshacer.
+  const t0 = Date.now();
+  const verbo = cuando ? "Scheduling" : "Publishing to Instagram";
+  $("publishLabel").textContent = cuando ? "Scheduling…" : "Publishing…";
+  const tic = () => say(`${verbo}… ${Math.round((Date.now() - t0) / 1000)}s`, "busy");
+  tic();
+  const cuenta = setInterval(tic, 1000);
+
   try {
     const r = await fetch("/publicar", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -1229,10 +1377,20 @@ async function send(cuando) {
     });
     const j = await r.json();
     if (!j.ok) throw new Error(j.error || "unknown");
+    clearInterval(cuenta);
     hecho(j);
     say(j.estado === "publicado" ? `Published · ${slug}` : `Scheduled · ${slug}`, "ok");
-  } catch (err) { say("Could not publish: " + err.message, "bad"); }
-  botones.forEach(b => b.disabled = false);
+  } catch (err) {
+    clearInterval(cuenta);
+    say("Could not publish: " + err.message, "bad");
+  } finally {
+    clearInterval(cuenta);
+    busy(false);
+    $("publishNow").classList.remove("sending");
+    $("publishSpin").hidden = true;
+    botones.forEach(b => b.disabled = false);
+    desarmar();          // devuelve el rotulo, y deja el boton sin armar
+  }
   contar();
 }
 
