@@ -100,6 +100,28 @@ def caption(texto):
     return "\n".join(salida).strip()
 
 
+def listo(mid, espera=90):
+    """Espera a que Meta termine de procesar un contenedor.
+
+    Meta baja cada imagen y la procesa de forma asincrona, asi que `/media`
+    devuelve el id antes de que el contenedor sirva. Usarlo mientras sigue
+    IN_PROGRESS falla con "Media ID is not available", que no dice nada de la
+    causa: por eso se espera aca y no se descubre en el error.
+    """
+    limite = time.time() + espera
+    while True:
+        estado = graph(mid, fields="status_code").get("status_code")
+        if estado == "FINISHED":
+            return mid
+        if estado == "ERROR":
+            raise RuntimeError(f"Instagram no pudo procesar el contenedor {mid}. "
+                               "Suele ser la imagen: formato, peso o la URL.")
+        if time.time() >= limite:
+            raise RuntimeError(f"Instagram lleva {espera}s procesando {mid} "
+                               f"y sigue en {estado}.")
+        time.sleep(3)
+
+
 def publicar(urls, texto):
     """Las tres llamadas de Meta: un contenedor por imagen, uno de carrusel con
     los hijos, y publicar ese. Devuelve el id del post y su enlace."""
@@ -110,10 +132,11 @@ def publicar(urls, texto):
         raise ValueError(f"El caption tiene {len(texto)} caracteres y el tope "
                          f"de Instagram son {MAX_CAPTION}.")
     ig = mi_id()
-    hijos = [graph_post(f"{ig}/media", image_url=u, is_carousel_item="true")["id"]
+    hijos = [listo(graph_post(f"{ig}/media", image_url=u,
+                              is_carousel_item="true")["id"])
              for u in urls]
-    padre = graph_post(f"{ig}/media", media_type="CAROUSEL",
-                       children=",".join(hijos), caption=texto)["id"]
+    padre = listo(graph_post(f"{ig}/media", media_type="CAROUSEL",
+                             children=",".join(hijos), caption=texto)["id"])
     post = graph_post(f"{ig}/media_publish", creation_id=padre)["id"]
     try:
         enlace = graph(post, fields="permalink").get("permalink", "")
@@ -208,7 +231,7 @@ def cuando_dice(marca):
 
 
 def self_check():
-    global AGENDA, publicar
+    global AGENDA, publicar, graph
     import tempfile
     AGENDA = os.path.join(tempfile.mkdtemp(), "agenda.json")
 
@@ -267,6 +290,21 @@ def self_check():
     publicar = revienta
     fila = ahora("63006-groove", "hola", ["a", "b"])
     assert fila["estado"] == "error" and "permiso" in fila["error"]
+
+    # Un contenedor que sigue procesando se espera; uno que fallo, no.
+    dormir, time.sleep = time.sleep, lambda _: None
+    estados = iter(["IN_PROGRESS", "FINISHED"])
+    graph = lambda mid, **_: {"status_code": next(estados)}  # noqa: E731
+    assert listo("c1") == "c1"
+    graph = lambda mid, **_: {"status_code": "ERROR"}  # noqa: E731
+    try:
+        listo("c2")
+    except RuntimeError as e:
+        assert "no pudo procesar" in str(e)
+    else:
+        raise AssertionError("un contenedor en ERROR tenia que fallar")
+    time.sleep = dormir
+
     print("ok")
 
 
