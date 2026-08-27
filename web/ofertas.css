@@ -24,10 +24,14 @@
         border:1px solid var(--edge-2)}
  .sello::before{content:"";width:6px;height:6px;border-radius:50%;
                 background:currentColor}
+ /* El pulso es el del BadgeStatus "live" de Concorde (opacidad + escala, no
+    solo opacidad): el mismo punto que ya usa `.chip-punto` para "haciendo el
+    carrusel", asi que "en vivo" y "corriendo ahora" hablan el mismo gesto. */
+ .grupo.vivo .sello::before{animation:late 1.4s ease-in-out infinite}
  .grupo.vivo .sello{color:var(--orange);border-color:rgba(237,137,54,.42);
                     background:rgba(237,137,54,.12)}
- .grupo.negociable .sello{color:var(--cyan-2);border-color:rgba(0,168,171,.5);
-                          background:rgba(0,168,171,.16)}
+ .grupo.negociable .sello{color:var(--cyan-2);border-color:rgba(0,174,177,.5);
+                          background:rgba(0,174,177,.16)}
 
  /* ── La tarjeta ─────────────────────────────────────────────────────────
     La tarjeta entera es el control, pero el control tiene que verse: el
@@ -36,7 +40,13 @@
     como nada. */
  .rejilla{display:grid;gap:16px;
           grid-template-columns:repeat(auto-fill,minmax(218px,1fr))}
+ /* Con 60+ tarjetas en pantalla, cada una con su propio backdrop-filter, el
+    navegador pinta el blur de todas aunque solo unas pocas se vean. Con
+    content-visibility:auto salta el layout/paint de las que estan fuera del
+    viewport; contain-intrinsic-size le da una altura aproximada para que la
+    barra de scroll no salte cuando entran en pantalla. */
  .card{position:relative;display:flex;flex-direction:column;color:inherit;
+       content-visibility:auto;contain-intrinsic-size:auto 280px;
        background:var(--sheet);border:1px solid var(--edge);border-radius:16px;
        overflow:hidden;box-shadow:var(--lift);
        backdrop-filter:var(--frost);-webkit-backdrop-filter:var(--frost);
@@ -62,14 +72,17 @@
  .card:has(input:checked) .tic{background:var(--violet);
    border-color:var(--violet-2);color:#fff}
 
- /* El camino de siempre sigue estando: una oferta a mano, en el estudio. */
+ /* El camino de siempre sigue estando: una oferta a mano, en el estudio. Con
+    opacity:0 en reposo, en un telefono/tablet sin mouse esto no existia: no
+    hay hover que lo revele y tampoco hay focus antes de tocar. Se deja un
+    resto visible siempre y solo el hover/focus lo termina de encender. */
  .card .abrir{position:absolute;top:10px;right:10px;z-index:2;
    display:inline-flex;align-items:center;gap:5px;
    padding:5px 10px 5px 8px;border-radius:9px;
    border:1px solid rgba(255,255,255,.28);background:rgba(8,5,14,.62);
    backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
    font:600 11px Jakarta,system-ui,sans-serif;color:var(--ink);
-   text-decoration:none;opacity:0;transition:opacity .16s,border-color .16s}
+   text-decoration:none;opacity:.5;transition:opacity .16s,border-color .16s}
  .card .abrir .ico{width:13px;height:13px}
  .card:hover .abrir,.card:focus-within .abrir{opacity:1}
  .card .abrir:hover{border-color:var(--violet-2)}
@@ -94,9 +107,13 @@
  .card .pre s{text-decoration:none;color:var(--ink-2);font-weight:600;
               font-size:12px;margin-inline-end:3px}
  .card .pre.sin{color:var(--ink-2);font-weight:600;font-size:13px}
- .card .cie{font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
- /* Que cierre hoy es lo unico de la tarjeta que cambia una decision. */
+ .card .cie{display:flex;align-items:center;gap:4px;font-size:12px;
+            color:var(--ink-2);font-variant-numeric:tabular-nums}
+ .card .cie .ico{width:12px;height:12px;color:inherit}
+ /* Que cierre hoy es lo unico de la tarjeta que cambia una decision: el
+    reloj se pinta del mismo naranja que el texto en ese caso. */
  .card .cie b{color:var(--orange);font-weight:800}
+ .card .cie:has(b) .ico{color:var(--orange)}
  .card .num{display:flex;align-items:baseline;gap:8px;margin-top:2px;
             padding-top:8px;border-top:1px solid var(--edge);
             font-size:11px;color:var(--ink-2);
@@ -140,14 +157,31 @@
    opacity:.45;cursor:default;transform:none;box-shadow:none}
  .pill-primary:active,.pill-publicar:active{transform:translateY(1px)}
 
+ /* El tratamiento de hover/pressed es el del Button primary de Concorde
+    (concorde-v2-theta.vercel.app/r/button.json) portado a mano: mismo
+    levante y mismo degradado oscuro al soltar. Sin el brillo animado que
+    gira el angulo del gradiente -- ponytail: eso es floritura de
+    movimiento sobre un boton que ya lee bien quieto; se agrega si alguna
+    vez se nota su falta. */
  .pill-primary{height:48px;padding:0 26px;color:#fff;border:2px solid transparent;
+   position:relative;overflow:hidden;
+   text-shadow:0 1px 3px rgba(0,0,0,.25);
    background-image:var(--vy-primary),var(--vy-borde);
    background-origin:padding-box,border-box;
    background-clip:padding-box,border-box;
-   box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 10px 24px -14px rgba(237,137,54,.85)}
- .pill-primary:hover:not(:disabled){
+   box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 10px 24px -14px rgba(237,137,54,.85);
+   transition:transform .2s cubic-bezier(.25,.8,.25,1),box-shadow .25s}
+ /* El brillo superior del Button primary de Concorde: una franja clara que
+    se apaga a mitad de alto, no un degradado de fondo distinto. */
+ .pill-primary::before{content:"";position:absolute;inset:0;z-index:1;
+   pointer-events:none;border-radius:inherit;
+   background:linear-gradient(rgba(255,255,255,.17) 0%,transparent 55%)}
+ .pill-primary:hover:not(:disabled){transform:translateY(-2px) scale(1.02);
    box-shadow:inset 0 1px 0 rgba(255,255,255,.36),
-              0 14px 30px -14px rgba(237,137,54,.95)}
+              0 8px 24px -6px rgba(132,96,229,.4),0 4px 10px -4px rgba(237,137,54,.5)}
+ .pill-primary:active:not(:disabled){transform:scale(.97) translateY(1px);
+   background-image:var(--vy-primary-activo),var(--vy-borde);
+   box-shadow:inset 0 2px 5px rgba(0,0,0,.22),inset 0 0 0 1px rgba(0,0,0,.12)}
  .pill-primary[hidden]{display:none}
 
  .pill-ghost{height:40px;padding:0 17px;color:var(--ink-2);font-weight:600;
@@ -225,17 +259,26 @@
  .cab-acciones{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
  .cab-acciones[hidden]{display:none}
 
- .pista{height:6px;border-radius:999px;background:rgba(255,255,255,.07);
-   overflow:hidden;box-shadow:inset 0 1px 3px rgba(0,0,0,.5)}
+ /* El track hundido es el del ProgressBar de Concorde (rgba(0,0,0,.22) +
+    doble inset-shadow), a nuestra altura de 6px en vez de sus 22px: aca es
+    un acento bajo el texto, no una barra de pantalla completa. El relleno ya
+    era `--vy-borde`, el gradiente canonico -- eso ya calzaba antes de tocar
+    nada. scaleX en vez de width: animar `width` mueve layout, escalar no. */
+ .pista{height:6px;border-radius:999px;overflow:hidden;
+   background:rgba(0,0,0,.22);
+   box-shadow:inset 0 1px 0 rgba(255,255,255,.06),inset 0 2px 4px rgba(0,0,0,.35)}
  .pista[hidden]{display:none}
- .pista-fill{height:100%;width:0;border-radius:999px;
-   background:var(--vy-borde);
-   transition:width .35s cubic-bezier(.3,0,0,1)}
+ .pista-fill{height:100%;width:100%;border-radius:999px;transform-origin:left;
+   transform:scaleX(0);background:var(--vy-borde);
+   transition:transform .35s cubic-bezier(.3,0,0,1)}
 
- .cerrar{width:34px;height:34px;border-radius:50%;flex:none;cursor:pointer;
-   display:grid;place-items:center;color:var(--ink-2);
+ .cerrar{position:relative;width:34px;height:34px;border-radius:50%;flex:none;
+   cursor:pointer;display:grid;place-items:center;color:var(--ink-2);
    border:1px solid var(--edge);background:var(--raise);
    transition:background .16s,color .16s,border-color .16s}
+ /* 34x34 visual, 44x44 de area de click -- el mismo truco del `::before`
+    invisible que ya usa `.marca`. */
+ .cerrar::before{content:"";position:absolute;inset:-5px}
  .cerrar:hover{background:var(--raise-2);color:var(--ink);border-color:var(--edge-2)}
 
  /* ── Un carrusel terminado ──────────────────────────────────────────── */
@@ -259,6 +302,10 @@
  /* Marcar cuales van al feed. El bloque se marca aca y el boton de la
     cabecera las publica en fila. */
  .marca{position:relative;display:grid;place-items:center;flex:none;cursor:pointer}
+ /* La caja visible es 22x22, menos del minimo tactil de 44x44: el area de
+    click real se agranda con un `::before` invisible, sin tocar el tamano
+    que se ve. */
+ .marca::before{content:"";position:absolute;inset:-11px}
  .marca input{position:absolute;opacity:0;width:1px;height:1px}
  .marca input:disabled{cursor:default}
  .marca-caja{width:22px;height:22px;border-radius:7px;display:grid;
@@ -281,7 +328,10 @@
  .obra[data-fase=haciendo] .chip{color:var(--violet-2);
    border-color:rgba(174,142,255,.42);background:rgba(174,142,255,.12)}
  .obra[data-fase=haciendo] .chip-punto{animation:late 1.4s ease-in-out infinite}
- @keyframes late{50%{opacity:.25}}
+ /* El mismo pulso del dot "live" de Concorde: opacidad Y escala, no solo
+    opacidad -- se nota mas vivo sin subir el ritmo. */
+ @keyframes late{0%,100%{opacity:1;transform:scale(1)}
+                 50%{opacity:.28;transform:scale(.67)}}
  .obra[data-fase=listo] .chip{color:var(--green);
    border-color:rgba(74,222,155,.4);background:rgba(74,222,155,.11)}
  .obra[data-fase=publicado] .chip{color:var(--green);
@@ -292,22 +342,80 @@
  .obra-cuerpo{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr)}
  @media(max-width:760px){.obra-cuerpo{grid-template-columns:1fr}}
 
- .obra-slides{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:14px}
- .slide{margin:0;aspect-ratio:1;border-radius:9px;overflow:hidden;
-   background:var(--raise);box-shadow:inset 0 1px 0 var(--edge)}
- .slide a{display:block;height:100%}
- .slide img{width:100%;height:100%;object-fit:cover;display:block;
-   transition:transform .25s cubic-bezier(.2,.8,.2,1)}
- .slide a:hover img{transform:scale(1.04)}
- /* Mientras se hace: la foto de la subasta en el primer hueco y los otros
-    tres esperando. Un esqueleto dice cuanto falta; un spinner no. */
- .obra[data-fase=cola] .slide:empty,.obra[data-fase=haciendo] .slide:empty{
-   background:linear-gradient(100deg,var(--raise) 30%,var(--raise-2) 50%,
-                              var(--raise) 70%);
-   background-size:220% 100%;animation:onda 1.5s ease-in-out infinite}
- @keyframes onda{to{background-position:-120% 0}}
- .obra[data-fase=cola] .slide img,.obra[data-fase=haciendo] .slide img{
-   filter:grayscale(.5) brightness(.7)}
+  .obra-slides{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:14px}
+  .slide{position:relative;margin:0;aspect-ratio:1;border-radius:9px;overflow:hidden;
+    background:var(--raise);box-shadow:inset 0 1px 0 var(--edge);
+    cursor:pointer}
+  .slide a{display:block;height:100%}
+  .slide img{width:100%;height:100%;object-fit:cover;display:block;
+    transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+  .slide a:hover img{transform:scale(1.04)}
+  .slide-overlay{position:absolute;inset:0;background:rgba(14,11,20,.6);
+    backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    opacity:0;transition:opacity .18s ease;color:var(--ink);pointer-events:none}
+  .slide-overlay .ico{width:22px;height:22px;color:var(--violet-2)}
+  .slide-overlay span{font-size:11.5px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
+  /* focus-visible ademas de hover: ahora que `.slide` tiene tabindex, alguien
+     navegando con teclado tiene que poder ver que llego ahi. */
+  .slide:hover .slide-overlay,.slide:focus-visible .slide-overlay{opacity:1}
+  .slide:focus-visible{outline:2px solid var(--violet-2);outline-offset:2px}
+  /* Mientras se hace: la foto de la subasta en el primer hueco y los otros
+     tres esperando. Un esqueleto dice cuanto falta; un spinner no. */
+  .obra[data-fase=cola] .slide:empty,.obra[data-fase=haciendo] .slide:empty{
+    background:linear-gradient(100deg,var(--raise) 30%,var(--raise-2) 50%,
+                               var(--raise) 70%);
+    background-size:220% 100%;animation:onda 1.5s ease-in-out infinite}
+  @keyframes onda{to{background-position:-120% 0}}
+  .obra[data-fase=cola] .slide img,.obra[data-fase=haciendo] .slide img{
+    filter:grayscale(.5) brightness(.7)}
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     Modal Flotante de Edición / Reencuadre Rápido
+     ═══════════════════════════════════════════════════════════════════════ */
+  .capa-editor{position:fixed;inset:0;z-index:100;overflow-y:auto;overscroll-behavior:contain;
+    display:flex;align-items:center;justify-content:center;padding:20px;
+    background:rgba(8,5,14,.84);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+    animation:editor-fade .2s cubic-bezier(.16,1,.3,1) both}
+  .capa-editor[hidden]{display:none}
+  @keyframes editor-fade{from{opacity:0}to{opacity:1}}
+
+  .modal-editor{width:100%;max-width:540px;margin:auto;display:flex;flex-direction:column;
+    gap:16px;padding:20px;background:var(--sheet);border:1px solid var(--edge-2);
+    border-radius:20px;box-shadow:var(--lift),0 28px 60px -15px rgba(0,0,0,.95);
+    backdrop-filter:var(--frost);-webkit-backdrop-filter:var(--frost);
+    animation:editor-scale .24s cubic-bezier(.16,1,.3,1) both}
+  @keyframes editor-scale{from{transform:scale(.96) translateY(8px)}to{transform:none}}
+
+  .editor-cab{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+  .editor-tit{font-size:16px;font-weight:800;letter-spacing:-.01em;margin:0 0 3px}
+  .editor-sub{font-size:12px;color:var(--ink-2);margin:0}
+
+  .editor-cuerpo{display:flex;flex-direction:column;gap:14px;align-items:center}
+  .editor-stage{position:relative;width:100%;aspect-ratio:1;max-width:440px;
+    display:grid;place-items:center}
+  .editor-frame{position:relative;width:100%;height:100%;overflow:hidden;
+    border-radius:14px;background:#000;cursor:grab;touch-action:none;
+    user-select:none;box-shadow:var(--lift);border:1px solid var(--edge-2)}
+  .editor-frame.dragging{cursor:grabbing}
+  .editor-frame img{width:100%;height:100%;object-fit:cover;pointer-events:none;display:block}
+
+  .editor-controles{width:100%;max-width:440px;display:flex;justify-content:center}
+  .editor-zoom-box{display:flex;align-items:center;gap:10px;width:100%;
+    padding:8px 14px;background:var(--raise);border:1px solid var(--edge);
+    border-radius:12px}
+  .editor-zoom-box label{font-size:12px;font-weight:700;color:var(--ink-2);text-transform:uppercase}
+  .editor-zoom-box input[type=range]{flex:1;accent-color:var(--violet)}
+  .editor-zoom-box output{font-variant-numeric:tabular-nums;font-size:12.5px;
+    color:var(--ink);min-width:38px;font-weight:700}
+  .editor-btn-sm{height:30px;padding:0 10px;font-size:11.5px;border-radius:8px}
+
+  .editor-pie{display:flex;align-items:center;justify-content:flex-end;gap:10px;
+    padding-top:10px;border-top:1px solid var(--edge);flex-wrap:wrap}
+  .editor-msg{margin:0;margin-right:auto;font-size:12px;font-weight:600;color:var(--ink-2)}
+  .editor-msg.busy{color:var(--violet-2)}
+  .editor-msg.ok{color:var(--green)}
+  .editor-msg.bad{color:var(--red)}
 
  .obra-copy{display:flex;flex-direction:column;gap:9px;
    padding:14px 18px 16px;border-left:1px solid var(--edge)}

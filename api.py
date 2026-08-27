@@ -48,10 +48,12 @@ def _tarjeta(o):
         "precio": o.get("base_price"),
         "cierre": " ".join(x for x in (cierre.get("date"), cierre.get("time"),
                                        cierre.get("meridian")) if x),
-        # La mas grande que publica la API para una tarjeta: 460x345. De aca
-        # solo se elige; las del carrusel las baja scraper.py en 800x600, que
-        # es el techo del CDN (ver API-INTEGRACION.md).
-        "foto": o.get("image_md") or o.get("image_xs") or "",
+        # "image" es la de mayor calidad que publica la API para una
+        # tarjeta -- recien activada; antes solo llegaba "image_md" (460x345).
+        # image_md/image_xs quedan de respaldo por si una oferta vieja
+        # todavia no la trae. De aca solo se elige; las del carrusel las baja
+        # scraper.py en 800x600, que es el techo del CDN (API-INTEGRACION.md).
+        "foto": o.get("image") or o.get("image_md") or o.get("image_xs") or "",
         "vistas": stats.get("views") or 0,
         # Live cuenta participantes; negociable, negociaciones. Nunca las dos.
         "interes": stats.get("participants") if stats.get("participants") is not None
@@ -106,6 +108,11 @@ def _demo():
     o = g[0]["ofertas"][0]
     assert o["id"] == 63154 and o["cierre"] == "Hoy 02:40 pm", o
     assert o["interes"] == 22, "en vivo manda participantes"
+    assert o["foto"] == "https://cdn/m_x.png", "cae a image_md sin image"
+    m = _tarjeta({"id": 2, "name": "y", "base_price": 1,
+                  "image": "https://cdn/full.jpg", "image_md": "https://cdn/m_y.png",
+                  "stats": {}})
+    assert m["foto"] == "https://cdn/full.jpg", "image manda sobre image_md"
     # Negociable: sin precio base y contando negociaciones, no participantes.
     n = _tarjeta({"id": 1, "name": "x", "base_price": None,
                   "stats": {"views": 3, "participants": None, "negotiations": 0}})

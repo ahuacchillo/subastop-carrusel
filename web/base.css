@@ -11,8 +11,16 @@
           Los dos gradientes son los canonicos del sistema —el mismo
           VYStrokes1 que `remotion/src/brand/vmc.ts` llama `gradient.borde`—
           y si cambian, cambian en los dos sitios. */
-       --cyan:#00A8AB;--cyan-2:#00CACE;
+       /* Cyan portado del catalogo de Concorde (teal-500/400 en Button.tsx):
+          esta pagina tenia #00A8AB/#00CACE, un par de puntos corridos del
+          valor canonico. */
+       --cyan:#00AEB1;--cyan-2:#00CCCC;--cyan-3:#009095;
+       /* violet-3 y orange-2: vault-600 y orange-700 de Concorde, el estado
+          pressed del boton principal — no existian como token, estaban
+          escritos sueltos donde hacia falta un violeta mas oscuro. */
+       --violet-3:#5A35C2;--orange-2:#D46E20;
        --vy-primary:linear-gradient(149.88deg,#ED8936 0%,#ED8936 40%,#8460E5 100%);
+       --vy-primary-activo:linear-gradient(149.88deg,#D46E20 0%,#D46E20 40%,#5A35C2 100%);
        --vy-borde:linear-gradient(135deg,#FFFFFF 0%,#F4AC59 22%,#8460E5 74.5%,#FFFFFF 100%);
        --sheet:rgba(13,9,21,.78);--raise:rgba(38,29,56,.58);
        --raise-2:rgba(52,40,76,.74);

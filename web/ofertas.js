@@ -17,6 +17,7 @@ const ICO = {
   cierra: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
   alerta: '<path d="M12 8.5v5"/><path d="M12 17v.01"/>' +
           '<path d="M12 3.5L2.8 19.5a1 1 0 0 0 .87 1.5h16.66a1 1 0 0 0 .87-1.5z"/>',
+  editar: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>',
 };
 const ico = (n, clase) =>
   `<svg class="ico ${clase || ''}" viewBox="0 0 24 24" fill=none stroke=currentColor
@@ -24,6 +25,7 @@ const ico = (n, clase) =>
         aria-hidden=true>${ICO[n]}</svg>`;
 
 $('cerrar').innerHTML = ico('cierra');
+$('editorCerrar').innerHTML = ico('cierra');
 $('zipBtn').insertAdjacentHTML('afterbegin', ico('baja'));
 
 function contar() {
@@ -123,11 +125,11 @@ function bloque(card) {
 function llenar(el, j) {
   el.dataset.fase = 'listo';
   el.dataset.slug = j.slug;
+  el._datosLote = j; // Guardar datos para edición posterior
   el.querySelector('.obra-slug').textContent = j.slug;
   el.querySelector('.chip-txt').textContent = 'Listo';
-  el.querySelector('.obra-slides').innerHTML = (j.slides || []).map((u, n) =>
-    `<figure class=slide><a href="${u}" target=_blank rel=noopener>
-       <img src="${u}" alt="Slide ${n + 1}" loading=lazy></a></figure>`).join('');
+  
+  pintarSlidesBloque(el, j);
 
   const ta = el.querySelector('.copy-area');
   ta.value = j.copy || '';
@@ -153,6 +155,39 @@ function llenar(el, j) {
   prepararPublicar(el);
   el.querySelector('.marca input').onchange = cuantasMarcadas;
   cuantasMarcadas();
+}
+
+function pintarSlidesBloque(el, j) {
+  const slidesCont = el.querySelector('.obra-slides');
+  slidesCont.innerHTML = (j.slides || []).map((u, n) => {
+    const esCierre = n === (j.slides.length - 1);
+    const overlay = esCierre ? '' : `<div class="slide-overlay">${ico('editar')}<span>Ajustar</span></div>`;
+    // tabindex+role+aria-label solo en las editables: la placa de cierre no
+    // reacciona a nada, marcarla como boton seria prometer una accion que no
+    // existe.
+    const foco = esCierre ? '' : `tabindex=0 role=button aria-label="Reencuadrar foto ${n + 1}"`;
+    return `<figure class="slide" data-idx="${n}" ${foco}
+      title="${esCierre ? 'Placa de cierre' : 'Clic para reencuadrar y ajustar'}">
+      <img src="${u}" alt="Slide ${n + 1}" loading="lazy">
+      ${overlay}
+    </figure>`;
+  }).join('');
+
+  // Clic o teclado (Enter/Espacio) editan las fotos del auto (slides 0, 1, 2):
+  // antes solo el mouse podia abrir el editor, y no habia forma de llegar ahi
+  // navegando solo con teclado.
+  slidesCont.querySelectorAll('.slide').forEach(fig => {
+    const idx = parseInt(fig.dataset.idx, 10);
+    if (idx < (j.slides.length - 1)) {
+      fig.onclick = () => abrirEditorFoto(el, idx);
+      fig.onkeydown = e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          abrirEditorFoto(el, idx);
+        }
+      };
+    }
+  });
 }
 
 // Y lo que llega cuando se cae. El error del lote casi siempre es que la web
@@ -296,7 +331,7 @@ $('hacer').onclick = async () => {
   $('cabIcono').innerHTML = '<i class=anillo></i>';
   delete $('cabIcono').dataset.fin;
   $('pista').hidden = false;
-  $('pistaFill').style.width = '0%';
+  $('pistaFill').style.transform = 'scaleX(0)';
   $('cabTexto').textContent = 'Haciendo los carruseles…';
   $('cabCuenta').textContent = `0 de ${cards.length}`;
   abrir();
@@ -332,7 +367,7 @@ $('hacer').onclick = async () => {
       }
       // Cuantas cerraron, no cual va: con dos en vuelo "3 de 10" no señala nada.
       cerradas++;
-      $('pistaFill').style.width = (cerradas / cards.length * 100) + '%';
+      $('pistaFill').style.transform = `scaleX(${cerradas / cards.length})`;
       $('cabCuenta').textContent = `${cerradas} de ${cards.length}`;
       $('paso').textContent = `${cerradas} de ${cards.length}`;
     }
@@ -358,6 +393,206 @@ $('hacer').onclick = async () => {
     ? `${hechos.length} de ${cards.length} listos` : 'ninguno salió';
   $('hacer').disabled = false; $('limpiar').disabled = false;
   cuantasMarcadas();
+};
+
+// ── Editor Rápido Flotante ────────────────────────────────────────────────
+let editorActivo = null; // { el, idx, slug, foto, foco, escala, rawFoco }
+
+function pctOf(s) {
+  return (s || '50% 50%').split(' ').map(parseFloat);
+}
+
+function clamp(v) {
+  return Math.min(100, Math.max(0, v));
+}
+
+function abrirEditorFoto(el, idx) {
+  const j = el._datosLote;
+  if (!j || !j.slug || !j.fotos || !j.fotos[idx]) return;
+  
+  const f = j.fotos[idx];
+  let src = typeof f === 'string' ? f : f.src;
+  // Si viene como autos/63173-xxx.jpeg convertir a /auto/xxx
+  let imgUrl = src;
+  if (imgUrl.startsWith('autos/')) {
+    imgUrl = '/auto/' + imgUrl.replace('autos/', '');
+  } else if (!imgUrl.startsWith('/') && !imgUrl.startsWith('http')) {
+    imgUrl = '/' + imgUrl;
+  }
+  
+  const foco = (typeof f === 'object' && f.foco) ? f.foco : '50% 50%';
+  const escala = (typeof f === 'object' && f.escala) ? f.escala : 1.0;
+  
+  editorActivo = {
+    el,
+    idx,
+    slug: j.slug,
+    src: typeof f === 'string' ? f : f.src,
+    imgUrl,
+    foco,
+    escala
+  };
+
+  $('editorTitulo').textContent = `Ajustar Foto ${idx + 1} · ${el.querySelector('.obra-nom').textContent}`;
+  $('editorImg').src = imgUrl;
+  $('editorZoom').value = escala;
+  $('editorZoomOut').value = Number(escala).toFixed(2) + '×';
+  $('editorMsg').textContent = '';
+  $('editorMsg').className = 'editor-msg';
+  $('editorGuardar').disabled = false;
+  $('editorGuardar').innerHTML = ico('check') + 'Guardar y re-renderizar';
+
+  actualizarVistaEditor();
+  $('capaEditor').hidden = false;
+}
+
+function cerrarEditor() {
+  $('capaEditor').hidden = true;
+  editorActivo = null;
+}
+
+function actualizarVistaEditor() {
+  if (!editorActivo) return;
+  const img = $('editorImg');
+  img.style.objectPosition = editorActivo.foco;
+  if (editorActivo.escala === 1) {
+    img.style.transform = '';
+    img.style.transformOrigin = '';
+  } else {
+    img.style.transform = `scale(${editorActivo.escala})`;
+    img.style.transformOrigin = editorActivo.foco;
+  }
+  $('editorZoom').value = editorActivo.escala;
+  $('editorZoomOut').value = Number(editorActivo.escala).toFixed(2) + '×';
+}
+
+function travelEditor() {
+  const frame = $('editorFrame');
+  const img = $('editorImg');
+  const side = frame.clientWidth || 380;
+  const w = img.naturalWidth || 800;
+  const h = img.naturalHeight || 600;
+  if (!w || !h) return { x: 0, y: 0 };
+  const cover = Math.max(side / w, side / h);
+  const extra = side * ((editorActivo ? editorActivo.escala : 1) - 1);
+  return { x: w * cover - side + extra, y: h * cover - side + extra };
+}
+
+function setFocusEditor(px, py) {
+  if (!editorActivo) return;
+  editorActivo.foco = clamp(px).toFixed(1) + '% ' + clamp(py).toFixed(1) + '%';
+  actualizarVistaEditor();
+}
+
+// Drag & drop dentro del frame de edición
+let dragEditor = null;
+const editorFrame = $('editorFrame');
+
+editorFrame.addEventListener('pointerdown', e => {
+  if (!editorActivo) return;
+  dragEditor = {
+    x: e.clientX,
+    y: e.clientY,
+    foco: pctOf(editorActivo.foco),
+    range: travelEditor()
+  };
+  editorFrame.setPointerCapture(e.pointerId);
+  editorFrame.classList.add('dragging');
+});
+
+editorFrame.addEventListener('pointermove', e => {
+  if (!dragEditor || !editorActivo) return;
+  const dx = (e.clientX - dragEditor.x) / editorActivo.escala;
+  const dy = (e.clientY - dragEditor.y) / editorActivo.escala;
+  setFocusEditor(
+    dragEditor.range.x ? dragEditor.foco[0] - (dx / dragEditor.range.x) * 100 : dragEditor.foco[0],
+    dragEditor.range.y ? dragEditor.foco[1] - (dy / dragEditor.range.y) * 100 : dragEditor.foco[1]
+  );
+});
+
+const releaseEditor = () => {
+  dragEditor = null;
+  editorFrame.classList.remove('dragging');
+};
+editorFrame.addEventListener('pointerup', releaseEditor);
+editorFrame.addEventListener('pointercancel', releaseEditor);
+
+editorFrame.addEventListener('wheel', e => {
+  if (!editorActivo) return;
+  e.preventDefault();
+  editorActivo.escala = Math.min(3, Math.max(1, +(editorActivo.escala - e.deltaY * 0.0015).toFixed(3)));
+  actualizarVistaEditor();
+}, { passive: false });
+
+editorFrame.addEventListener('keydown', e => {
+  if (!editorActivo) return;
+  const step = e.shiftKey ? 5 : 1;
+  const [px, py] = pctOf(editorActivo.foco);
+  const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+  const m = moves[e.key];
+  if (!m) return;
+  e.preventDefault();
+  setFocusEditor(px + m[0], py + m[1]);
+});
+
+$('editorZoom').oninput = () => {
+  if (!editorActivo) return;
+  editorActivo.escala = +$('editorZoom').value;
+  actualizarVistaEditor();
+};
+
+$('editorRecenter').onclick = () => {
+  if (!editorActivo) return;
+  editorActivo.foco = '50% 50%';
+  editorActivo.escala = 1.0;
+  actualizarVistaEditor();
+};
+
+$('editorCerrar').onclick = cerrarEditor;
+$('editorCancelar').onclick = cerrarEditor;
+$('capaEditor').onclick = e => {
+  if (e.target === $('capaEditor')) cerrarEditor();
+};
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !$('capaEditor').hidden) {
+    cerrarEditor();
+  }
+});
+
+$('editorGuardar').onclick = async () => {
+  if (!editorActivo) return;
+  const { el, idx, slug, foco, escala } = editorActivo;
+  const btn = $('editorGuardar');
+  const msg = $('editorMsg');
+  
+  btn.disabled = true;
+  btn.innerHTML = '<i class="girito"></i>Guardando y renderizando…';
+  msg.textContent = 'Renderizando slide con Remotion…';
+  msg.className = 'editor-msg busy';
+  
+  try {
+    const r = await fetch('/reencuadrar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, indice: idx, foco, escala })
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'No se pudo actualizar');
+    
+    // Actualizar datos locales del bloque y re-pintar sus slides
+    el._datosLote.slides = j.slides;
+    el._datosLote.fotos = j.fotos;
+    pintarSlidesBloque(el, el._datosLote);
+    
+    dice(el, 'ok', `Foto ${idx + 1} actualizada`);
+    cerrarEditor();
+  } catch (err) {
+    btn.disabled = false;
+    btn.innerHTML = ico('alerta') + 'Reintentar guardar';
+    msg.textContent = err.message;
+    msg.className = 'editor-msg bad';
+  }
 };
 
 contar();

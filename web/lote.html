@@ -34,3 +34,38 @@
 
  </div>
 </div>
+
+<!-- Modal de edición rápida / ajuste de encuadre -->
+<div class="capa-editor" id="capaEditor" hidden role="dialog" aria-modal="true" aria-labelledby="editorTitulo">
+  <div class="modal-editor">
+    <header class="editor-cab">
+      <div>
+        <h3 class="editor-tit" id="editorTitulo">Ajustar encuadre de la foto</h3>
+        <p class="editor-sub" id="editorSub">Arrastra para mover la imagen · usa la rueda o el deslizador para zoom</p>
+      </div>
+      <button class="cerrar" id="editorCerrar" type="button" aria-label="Cerrar edición"></button>
+    </header>
+
+    <div class="editor-cuerpo">
+      <div class="editor-stage">
+        <div class="editor-frame" id="editorFrame" tabindex="0">
+          <img id="editorImg" src="" alt="Encuadre">
+        </div>
+      </div>
+      <div class="editor-controles">
+        <div class="editor-zoom-box">
+          <label for="editorZoom">Zoom</label>
+          <input type="range" id="editorZoom" min="1" max="3" step="0.02" value="1">
+          <output id="editorZoomOut">1.00×</output>
+          <button class="pill-ghost editor-btn-sm" id="editorRecenter" type="button" title="Centrar y resetear zoom">Recentrar</button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="editor-pie">
+      <p class="editor-msg" id="editorMsg" role="status"></p>
+      <button class="pill-ghost" id="editorCancelar" type="button">Cancelar</button>
+      <button class="pill-primary" id="editorGuardar" type="button">Guardar y re-renderizar</button>
+    </footer>
+  </div>
+</div>

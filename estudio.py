@@ -86,7 +86,7 @@ HOJA = """<!doctype html><meta charset=utf8>
 <link rel=stylesheet href="/web/{css}">
 <header class=topbar>
  <span class=brand><b>Studio</b><span>VMC Subastas</span></span>
- <a class=back href="/">Volver al estudio</a>
+ {atras}
 </header>
 <main>
 {cuerpo}
@@ -94,12 +94,15 @@ HOJA = """<!doctype html><meta charset=utf8>
 """
 
 
-def hoja(titulo, css, cuerpo):
+def hoja(titulo, css, cuerpo, atras=True):
     """La hoja comun con lo propio de cada pagina adentro.
 
-    Con replace y no con format: el HTML esta lleno de llaves."""
+    Con replace y no con format: el HTML esta lleno de llaves. `atras=False`
+    en las ofertas: ahi "Volver al estudio" apuntaria a la pagina en la que
+    ya se esta parado, un boton sin funcion."""
+    enlace = '<a class=back href="/">Volver al estudio</a>' if atras else ''
     return (HOJA.replace("{titulo}", titulo).replace("{css}", css)
-            .replace("{cuerpo}", cuerpo))
+            .replace("{atras}", enlace).replace("{cuerpo}", cuerpo))
 
 
 
@@ -134,6 +137,16 @@ ICONO_CHECK = _SVG.format('<path d="M4.5 12.5l5 5 10-11"/>')
 ICONO_FUERA = _SVG.format(
     '<path d="M14.5 4H20v5.5"/><path d="M20 4l-8.5 8.5"/>'
     '<path d="M18 14.5V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4.5"/>')
+# El reloj de "Cierra ...": el path exacto del TimerIcon de Concorde
+# (voyager-ds), en su propio viewBox de 22 -- solo el trazo se baja a 1.7
+# para calzar con el resto del set, que es mas fino que el 1.83 original.
+ICONO_RELOJ = ('<svg class=ico viewBox="0 0 22 22" fill=none stroke=currentColor '
+               'stroke-width=1.7 stroke-linecap=round stroke-linejoin=round '
+               'aria-hidden=true><path d="M4.63973 10C5.09082 6.38255 8.17668 '
+               '3.58333 11.9163 3.58333C15.9664 3.58333 19.2496 6.86658 19.2496 '
+               '10.9167C19.2496 14.9668 15.9664 18.25 11.9163 18.25H7.33333'
+               'M11.9167 10.9167V7.25M10.0833 1.75H13.75M2.75 12.75H7.33333'
+               'M4.58333 15.5H9.16667"/></svg>')
 
 
 def cierre_de_subasta(fecha, hora, hoy):
@@ -398,7 +411,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         def vacio(titulo, dice):
             return hoja("Ofertas", "ofertas.css",
                         " <h1>Ofertas</h1>\n"
-                        f' <p class=vacio><b>{titulo}</b>{dice}</p>')
+                        f' <p class=vacio><b>{titulo}</b>{dice}</p>',
+                        atras=False)
 
         try:
             grupos = api.ofertas()
@@ -433,12 +447,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     f'data-foto="{html.escape(o["foto"], quote=True)}">'
                     f'<label>'
                     f'<input type=checkbox value="{o["id"]}">'
-                    f'<img src="{html.escape(o["foto"])}" alt="" decoding=async>'
+                    f'<img src="{html.escape(o["foto"])}" alt="" decoding=async loading=lazy>'
                     f'<span class=tic>{ICONO_CHECK}</span>'
                     f'<span class=txt>'
                     f'<span class=nom>{html.escape(o["nombre"])}{anio}</span>'
                     f'{precio}'
-                    f'<span class=cie>Cierra {cierre}</span>'
+                    f'<span class=cie>{ICONO_RELOJ}Cierra {cierre}</span>'
                     f'<span class=num><span class=vis>{o["vistas"]:,} '
                     f'{"vista" if o["vistas"] == 1 else "vistas"} · '
                     f'{o["interes"]} {interes(g["tipo"], o["interes"])}</span>'
@@ -465,7 +479,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     f"los carruseles solo: elige las tres fotos mirándolas, "
                     f"renderiza y escribe el copy.</p>\n"
                     + "\n".join(cuerpo) + web("lote.html")
-                    + '<script src="/web/ofertas.js" defer></script>')
+                    + '<script src="/web/ofertas.js" defer></script>',
+                    atras=False)
 
     def descargar(self, slug):
         """The whole carousel as one ZIP, built in memory: four downloads in a
@@ -544,7 +559,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                       "/lote": self.lote,
                       "/generar": self.generar, "/copy": self.copy,
                       "/generar-copy": self.generar_copy,
-                      "/publicar": self.publicar}.get(self.path)
+                      "/publicar": self.publicar,
+                      "/reencuadrar": self.reencuadrar}.get(self.path)
             if not accion:
                 return self.responder(404, "text/plain", b"no existe")
             r = accion(cuerpo)
@@ -552,6 +568,52 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.json(r)
         except Exception as e:  # noqa: BLE001 - whatever fails is shown on the page
             self.json({"ok": False, "error": str(e) or type(e).__name__})
+
+    def reencuadrar(self, c):
+        """Ajusta foco/escala de un slide de un carrusel existente y re-renderiza."""
+        slug = seguro(str(c.get("slug", "")))
+        indice = int(c.get("indice", 0))
+        foco = str(c.get("foco", "50% 50%"))
+        escala = float(c.get("escala", 1.0))
+        
+        datos_path = os.path.join(POSTS, slug, "datos.json")
+        if not os.path.isfile(datos_path):
+            raise ValueError(f"No existe datos.json para {slug}")
+        
+        with open(datos_path, "r", encoding="utf8") as f:
+            d = json.load(f)
+        
+        fotos = d.get("fotos", [])
+        if indice < 0 or indice >= len(fotos):
+            raise ValueError(f"Índice de foto {indice} fuera de rango")
+        
+        f_actual = fotos[indice]
+        src = f_actual if isinstance(f_actual, str) else f_actual.get("src", "")
+        
+        if foco != "50% 50%" or escala != 1.0:
+            fotos[indice] = {"src": src, "foco": foco, "escala": escala}
+        else:
+            fotos[indice] = src
+        
+        d["fotos"] = fotos
+        with open(datos_path, "w", encoding="utf8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=2)
+            
+        r = subprocess.run([os.path.join(RAIZ, "ajustar.sh"), slug, "--render"],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError((r.stderr or r.stdout).strip()[-300:])
+            
+        pngs = sorted(f for f in os.listdir(os.path.join(POSTS, slug))
+                      if f.endswith(".png"))
+        import time as _t
+        v = int(_t.time())
+        return {
+            "slug": slug,
+            "slides": [f"/post/{slug}/{p}?v={v}" for p in pngs],
+            "fotos": fotos,
+            "indice": indice
+        }
 
     def oferta(self, c):
         codigo = str(c.get("codigo", "")).strip().rstrip("/").rsplit("/", 1)[-1]
@@ -613,7 +675,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if os.path.isfile(copy_path):
             with open(copy_path, encoding="utf8") as f:
                 copy_text = f.read()
-        return {"slug": hecho["slug"], "fotos": tres, "siniestrado": chocado,
+        return {"slug": hecho["slug"], "fotos": hecho.get("fotos", tres), "siniestrado": chocado,
                 "slides": hecho["slides"], "copy": copy_text,
                 "nombre": c.get("nombre", "")}
 
@@ -713,7 +775,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # The ?v= keeps the browser from serving the previous render from cache.
         import time as _t
         v = int(_t.time())
-        return {"slug": slug, "slides": [f"/post/{slug}/{p}?v={v}" for p in pngs]}
+        return {"slug": slug, "slides": [f"/post/{slug}/{p}?v={v}" for p in pngs], "fotos": salida}
 
     def generar_copy(self, c):
         """Write the caption with the `vmc-ig-copy-ficha-tecnica` skill.
