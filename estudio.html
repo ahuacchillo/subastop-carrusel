@@ -37,8 +37,8 @@
   --red:      #F87171;
   /* Voyager: cyan es NEGOCIABLE, y los dos gradientes canonicos del sistema.
      Son los mismos que la pagina de ofertas de estudio.py: se mueven juntos. */
-  --cyan:     #00A8AB;
-  --cyan-2:   #00CACE;
+  --cyan:     #00AEB1;
+  --cyan-2:   #00CCCC;
   --vy-primary: linear-gradient(149.88deg,#ED8936 0%,#ED8936 40%,#8460E5 100%);
   --vy-borde:   linear-gradient(135deg,#FFFFFF 0%,#F4AC59 22%,#8460E5 74.5%,#FFFFFF 100%);
 
@@ -297,19 +297,31 @@ button:hover:not(:disabled) { background: var(--raise-2); border-color: var(--ed
 button:active:not(:disabled) { transform: translateY(1px); }
 button:disabled { opacity: .38; cursor: not-allowed; }
 
-/* The primary is the one lit body on the page: a vertical gradient for the
-   sheen, plus its own violet glow so it reads as the thing to press. */
+/* The primary is the one lit body on the page: the same border-gradient CTA
+   as every other "build it" button in the product (Ofertas' "Hacer los
+   carruseles"). --vy-primary/--vy-borde were already sitting in :root,
+   unused, while this button rolled its own plain violet -- the same action
+   looked like two different products depending which screen you were on. */
 button.primary {
-  background: linear-gradient(180deg, #9a79f2, var(--violet) 62%, #7854d8);
-  border-color: rgba(255,255,255,.18); color: #fff;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.28),
-              inset 0 -1px 0 rgba(0,0,0,.22),
-              0 8px 22px -12px rgba(132,96,229,.85);
+  position: relative; overflow: hidden;
+  border: 2px solid transparent; color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,.25);
+  background-image: var(--vy-primary), var(--vy-borde);
+  background-origin: padding-box, border-box;
+  background-clip: padding-box, border-box;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.3),
+              0 8px 22px -12px rgba(237,137,54,.55),
+              0 8px 22px -12px rgba(132,96,229,.7);
+}
+button.primary::before {
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(rgba(255,255,255,.17) 0%, transparent 55%);
 }
 button.primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #a888ff, #8e6bea 62%, #7f5ce0);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.34),
-              0 10px 26px -12px rgba(132,96,229,1);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.36),
+              0 10px 26px -12px rgba(237,137,54,.7),
+              0 10px 26px -12px rgba(132,96,229,.85);
 }
 button.ghost { background: transparent; border-color: var(--edge); color: var(--ink-2);
                box-shadow: none; }
