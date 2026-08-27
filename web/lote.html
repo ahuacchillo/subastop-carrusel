@@ -1,0 +1,36 @@
+<!-- La barra: aparece con la primera elegida y dispara el lote. Se queda
+     abajo mientras la tanda corre, con el paso y el camino de vuelta al
+     modal: cerrarlo no puede costar los resultados. -->
+<div class=barra id=barra hidden>
+ <b id=cuenta></b>
+ <span class=paso id=paso></span>
+ <button class=pill-ghost type=button id=limpiar>Quitar la selección</button>
+ <button class=pill-ver type=button id=ver hidden>Ver los carruseles</button>
+ <button class=pill-primary type=button id=hacer>Hacer los carruseles</button>
+</div>
+
+<!-- El modal de la tanda. Los bloques se crean todos al empezar, en el orden
+     de la pantalla y ya con su nombre y su foto: quien marco tres subastas
+     tiene que ver tres desde el primer segundo, no verlas aparecer de a una y
+     desordenadas. Cada uno se rellena cuando su render termina. -->
+<div class=capa id=capa hidden role=dialog aria-modal=true aria-labelledby=cabTexto>
+ <div class=modal>
+
+   <header class=cabecera>
+     <div class=cab-icono id=cabIcono></div>
+     <div class=cab-medio>
+       <p class=cab-texto id=cabTexto>Haciendo los carruseles…</p>
+       <div class=pista id=pista><div class=pista-fill id=pistaFill></div></div>
+     </div>
+     <b class=cab-cuenta id=cabCuenta></b>
+     <div class=cab-acciones id=cabAcciones hidden>
+       <a class=pill-primary id=zipBtn download>Descargar el ZIP</a>
+       <button class=pill-publicar id=pubTodas type=button disabled>Publicar</button>
+     </div>
+     <button class=cerrar id=cerrar type=button aria-label=Cerrar></button>
+   </header>
+
+   <div class=lista id=lista></div>
+
+ </div>
+</div>

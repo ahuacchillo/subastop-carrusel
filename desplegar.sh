@@ -19,15 +19,26 @@ PROYECTO="project-030f48f6-0f61-4e51-850"
 REGION="us-central1"          # nivel 1 de precios, que es el que tiene capa gratuita
 SERVICIO="estudio"
 
-[ -f "$HOME/estudio-clave.txt" ] || {
-  echo "Falta ~/estudio-clave.txt con la contraseña." >&2; exit 1; }
-CLAVE="$(cat "$HOME/estudio-clave.txt")"
+# Un secreto guardado en un archivo del home. Se ignoran las lineas en blanco
+# y las que empiezan con #, asi que el archivo puede llevar sus instrucciones
+# dentro; el token es la primera linea que no sea comentario. Un # en medio de
+# una contrasena sobrevive: solo se descarta la linea que *empieza* con el.
+llave() { grep -vE '^[[:space:]]*(#|$)' "$1" 2>/dev/null | head -n1 | tr -d '\r\n'; }
+
+CLAVE="$(llave "$HOME/estudio-clave.txt")"
+[ -n "$CLAVE" ] || { echo "Falta ~/estudio-clave.txt con la contraseña." >&2; exit 1; }
 
 # La clave de DeepSeek viaja igual: fuera del repo, dentro del entorno. Sin
 # ella el servicio arranca y renderiza; lo único que no funciona es "Draft it",
 # porque en el contenedor no hay CLI de Claude al que caerse.
-DS="$(cat "$HOME/deepseek-clave.txt" 2>/dev/null || true)"
+DS="$(llave "$HOME/deepseek-clave.txt")"
 [ -n "$DS" ] || echo "Aviso: sin ~/deepseek-clave.txt, el botón Draft it queda muerto." >&2
+
+# Y el token de Instagram, por el mismo camino: en un archivo del home, nunca en
+# el repo. Sin él el estudio arranca y hace carruseles; lo único que no funciona
+# es el botón de publicar, que responde "Falta IG_TOKEN en el entorno".
+IG="$(llave "$HOME/ig-token.txt")"
+[ -n "$IG" ] || echo "Aviso: sin ~/ig-token.txt, el botón Publicar queda muerto." >&2
 
 # --memory 2Gi : el pico medido del render es 704 MiB; 1 GiB queda muy justo
 # --cpu 2      : el render es CPU pura, más CPU son menos segundos facturados
@@ -52,5 +63,5 @@ exec "$GCLOUD" run deploy "$SERVICIO" \
   --min-instances 0 \
   --max-instances 1 \
   --allow-unauthenticated \
-  --set-env-vars "ESTUDIO_CLAVE=$CLAVE,DEEPSEEK_API_KEY=$DS" \
+  --set-env-vars "ESTUDIO_CLAVE=$CLAVE,DEEPSEEK_API_KEY=$DS,IG_TOKEN=$IG" \
   --quiet

@@ -20,7 +20,19 @@ cierre y código.
 - **Marcar varias** y *Hacer los carruseles* — el lote las hace solas, una
   detrás de otra: baja las fotos, un modelo las mira y elige las tres, renderiza
   y escribe el copy. Cada tarjeta va diciendo en qué anda, y la que falle no
-  detiene a las demás. Al terminar, un ZIP con todo.
+  detiene a las demás.
+
+  Todo eso pasa dentro de un modal, y **los bloques están desde el primer
+  segundo**: quien marcó tres subastas ve tres, con su nombre y su foto,
+  esperando su turno. Cada uno se llena cuando su render termina —los cuatro
+  slides y el copy, editable ahí mismo, que se guarda solo en el `copy.md`— y el
+  que falle dice por qué y lleva el enlace para abrirlo en el estudio, que es
+  donde se arregla.
+
+  De ahí salen las dos cosas que se hacen con un carrusel: el **ZIP** con todos
+  los que salieron, y **publicar**. Cada bloque tiene su botón, y marcando
+  varios el de la cabecera los manda en fila. Publicar siempre pide dos toques:
+  el post va al feed y eso no se deshace.
 - **Estudio**, en la esquina de cada tarjeta — la misma subasta, a mano, con el
   encuadre y los datos editables. Es el camino de siempre.
 
@@ -209,7 +221,15 @@ Cuatro piezas, cada una elegida por una razón concreta:
 | **Python, solo stdlib** (`estudio.py`, `scraper.py`) | el servidor y la lectura de la oferta | sin dependencias no hay `pip install` que se pudra ni entorno que reconstruir: se clona y corre |
 | **`urllib` + regex** | sacar los datos y las fotos de vmcsubastas | la página viene renderizada del servidor, así que todo está en el HTML y no hace falta un navegador para leerla |
 | **Remotion + React + Chromium** | dibujar los PNG de 1080×1080 | la pieza se diseña en código, con las mismas coordenadas de Figma, y se versiona en git — un canvas no da eso |
-| **Un HTML servido desde disco** (`estudio.html`) | la interfaz | sin build, sin framework, sin `npm run dev` para la UI: se recarga el navegador y ya está el cambio |
+| **HTML, CSS y JS servidos desde disco** (`estudio.html`, `web/`) | la interfaz | sin build, sin framework, sin `npm run dev` para la UI: se recarga el navegador y ya está el cambio |
+
+`web/` es la interfaz de las dos páginas que dibuja el servidor —las ofertas y
+la agenda—: `base.css` con los tokens compartidos, `ofertas.css`, `ofertas.js` y
+`lote.html`. Vivían dentro de strings de Python y llegaron a ser la mitad de
+`estudio.py`: ningún editor los coloreaba, ningún linter los miraba y editarlos
+era buscar y reemplazar dentro de una cadena. El servidor los lee del disco en
+cada pedido, así que recargar el navegador sigue siendo todo lo que hace falta
+para ver un cambio.
 
 Los dos caminos —el estudio y la terminal— comparten `scraper.py` y
 `ajustar.sh --render`, así que hay **un solo camino de render** en todo el
@@ -260,14 +280,27 @@ docker build -t estudio-vmc .
 docker run -p 7860:7860 -e ESTUDIO_CLAVE=loquesea estudio-vmc
 ```
 
-`estudio.py` lee tres variables de entorno, y con las tres sin poner se comporta
-exactamente como siempre:
+`estudio.py` lee cinco variables de entorno, y con las cinco sin poner se
+comporta exactamente como siempre:
 
 | Variable | Por defecto | Para qué |
 |---|---|---|
 | `ESTUDIO_HOST` | `127.0.0.1` | `0.0.0.0` para escuchar fuera de la máquina |
 | `PORT` | `4173` | el puerto |
 | `ESTUDIO_CLAVE` | vacío | la contraseña; **vacía no hay autenticación** |
+| `DEEPSEEK_API_KEY` | vacío | el modelo que mira las fotos y escribe el copy; sin ella cae al CLI de Claude |
+| `IG_TOKEN` | vacío | publicar; sin él el botón responde *Falta IG_TOKEN en el entorno* |
+
+Las dos últimas son secretos y **no van en el repo**. Viven en dos archivos del
+home, y los dos lanzadores los leen solos:
+
+```
+~/deepseek-clave.txt      ~/ig-token.txt
+```
+
+`./estudio.sh` los exporta si existen; `./desplegar.sh` los manda como variables
+de entorno del servicio de Cloud Run. Ninguno de los dos los escribe en disco
+dentro del proyecto.
 
 **`ESTUDIO_CLAVE` no es opcional en cuanto salga de `127.0.0.1`.** El servidor
 escribe archivos y lanza un renderizador: sin clave le entregas las dos cosas a
@@ -498,9 +531,18 @@ el formato y el orden de fotos se eligen con lo que ya funcionó.
 El carrusel sale al feed sin pasar por el teléfono. Dos botones y una hora.
 
 ```bash
-export IG_TOKEN=$(grep '^IG_TOKEN=' ../../ig-comentarios/.env | cut -d= -f2-)
-./estudio.sh
+# El token, una vez, en un archivo del home —nunca en el repo—:
+grep '^IG_TOKEN=' ../../ig-comentarios/.env | cut -d= -f2- > ~/ig-token.txt
+chmod 600 ~/ig-token.txt
+
+./estudio.sh          # lo lee solo
 ```
+
+El token necesita el permiso **`instagram_business_content_publish`** y la
+cuenta tiene que ser **Empresa o Creador**: en personal la API responde 403 y no
+hay nada más que probar. `authorize.py` de `ig-comentarios` pide los scopes por
+nombre, así que ese permiso tiene que estar en su constante `SCOPES` además de
+en el panel de Meta.
 
 Con el carrusel hecho aparecen, al lado de *Download carousel* —que **sigue ahí**,
 es la única salida para lo que no va al feed—, tres cosas:

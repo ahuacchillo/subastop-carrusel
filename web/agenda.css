@@ -1,0 +1,27 @@
+ /* Panel sobre mesa iluminada, la misma profundidad que las slides del
+    estudio. Antes era un bloque plano que no se distinguia del fondo. */
+ table{width:100%;border-collapse:collapse;background:var(--sheet);
+       border:1px solid var(--edge);border-radius:16px;overflow:hidden;
+       box-shadow:var(--lift);
+       backdrop-filter:var(--frost);-webkit-backdrop-filter:var(--frost)}
+ td{padding:13px 16px;border-top:1px solid var(--edge);vertical-align:middle}
+ tr:first-child td{border-top:0}
+ tr:hover td{background:rgba(255,255,255,.022)}
+ td.h{font-variant-numeric:tabular-nums;color:var(--ink-2);white-space:nowrap;
+      font-size:13.5px;width:1%}
+ td.s{font-weight:600}
+ td.n{color:var(--ink-2);font-size:13.5px}
+ td.n a{color:var(--green);text-decoration:underline;text-underline-offset:3px}
+ td.n a:hover{color:var(--ink)}
+
+ /* La insignia de estado habla el mismo idioma que el contador de la barra del
+    estudio: pildora con canto propio y brillo arriba, no una palabra suelta. */
+ td b{display:inline-grid;place-items:center;min-width:19px;height:21px;
+   padding:0 9px;border-radius:11px;
+   font-weight:800;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+   background:var(--raise-2);border:1px solid var(--edge-2);
+   box-shadow:inset 0 1px 0 var(--edge-2);color:var(--ink-2)}
+ tr.publicado b{color:var(--green);border-color:rgba(74,222,155,.34)}
+ tr.programado b{color:var(--violet-2);border-color:rgba(174,142,255,.40)}
+ tr.atrasado b{color:var(--orange);border-color:rgba(237,137,54,.42)}
+ tr.error b{color:var(--red);border-color:rgba(248,113,113,.42)}

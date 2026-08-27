@@ -79,65 +79,11 @@ SLUG_INICIAL = sys.argv[1].strip("/").removeprefix("Posts/") if len(sys.argv) > 
 # enlace no puede sentirse como salir del producto. Los tokens siguen siendo una
 # copia de los de estudio.html y tienen que moverse con ella; lo que no puede
 # haber es una tercera copia, que fue como esta pagina habia derivado sola.
+# El CSS y el javascript de las dos estan en `web/`, no aca: ver `web()`.
 HOJA = """<!doctype html><meta charset=utf8>
 <title>{titulo} — Estudio VMC</title>
-<style>
- /* Los tokens son una copia de estudio.html y tienen que moverse con ella: son
-    dos documentos, no dos productos. Antes esta pagina habia derivado sola —su
-    --violet era el --violet-2 del estudio— y se notaba al cruzar el enlace. */
- @font-face{font-family:Jakarta;src:url(/fuente) format("woff2");font-display:swap}
- :root{color-scheme:dark;
-       --bg:#0E0B14;--ink:#EDE9F5;--ink-2:#9A90B4;
-       --violet:#8460E5;--violet-2:#AE8EFF;
-       --green:#4ADE9B;--red:#F87171;--orange:#ED8936;
-       --sheet:rgba(13,9,21,.78);--raise:rgba(38,29,56,.58);
-       --raise-2:rgba(52,40,76,.74);
-       --edge:rgba(255,255,255,.11);--edge-2:rgba(255,255,255,.20);
-       --frost:saturate(155%) blur(20px);
-       --lift:0 18px 44px -18px rgba(0,0,0,.9);
-       --scroll:rgba(174,142,255,.20);--scroll-2:rgba(174,142,255,.40)}
- *{box-sizing:border-box;margin:0;scrollbar-width:thin;
-   scrollbar-color:var(--scroll) transparent}
- body{min-height:100vh;color:var(--ink);
-      font:400 15px/1.55 Jakarta,system-ui,sans-serif;-webkit-font-smoothing:antialiased;
-      background:
-        radial-gradient(560px 760px at 3% 22%,rgba(132,96,229,.30),transparent 70%),
-        radial-gradient(520px 720px at 99% 30%,rgba(174,142,255,.22),transparent 70%),
-        radial-gradient(620px 420px at 8% 102%,rgba(174,142,255,.12),transparent 70%),
-        var(--bg)}
- ::selection{background:var(--violet);color:#fff}
- :focus-visible{outline:2px solid var(--violet-2);outline-offset:2px;border-radius:8px}
-
- /* La misma barra que el estudio: cruzar el enlace no puede sentirse como
-    salir del producto. Antes se aterrizaba en una pagina desnuda y el camino
-    de vuelta era un enlace suelto al final de un parrafo, partido en dos
-    lineas. */
- .topbar{display:flex;align-items:center;gap:16px;padding:12px 20px;
-         border-bottom:1px solid var(--edge);background:var(--sheet);
-         backdrop-filter:var(--frost);-webkit-backdrop-filter:var(--frost);
-         box-shadow:inset 0 1px 0 var(--edge-2),0 12px 32px -24px #000}
- .brand{display:flex;align-items:baseline;gap:8px}
- .brand b{font-weight:800;font-size:20px;letter-spacing:-.03em;
-          background:linear-gradient(100deg,var(--ink) 18%,var(--violet-2));
-          -webkit-background-clip:text;background-clip:text;color:transparent}
- .brand span{color:var(--ink-2);font-size:13px}
- .back{margin-inline-start:auto;display:inline-flex;align-items:center;gap:6px;
-       padding:9px 16px;border:1px solid var(--edge);border-radius:8px;
-       background:var(--raise);box-shadow:inset 0 1px 0 var(--edge-2);
-       backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-       font:600 15px Jakarta,system-ui,sans-serif;color:var(--ink);
-       text-decoration:none;transition:background .15s,border-color .15s}
- .back:hover{background:var(--raise-2);border-color:var(--edge-2)}
-
- main{max-width:860px;margin:0 auto;padding:40px 24px 64px}
- h1{font-size:26px;font-weight:800;letter-spacing:-.02em;margin:0 0 6px}
- p.sub{color:var(--ink-2);margin:0 0 24px;font-size:13.5px;max-width:62ch}
- code{font:500 12.5px ui-monospace,SFMono-Regular,Menlo,monospace;
-      padding:2px 6px;border-radius:6px;background:var(--raise);
-      border:1px solid var(--edge);color:var(--ink);white-space:nowrap}
-
-{estilo}
-</style>
+<link rel=stylesheet href="/web/base.css">
+<link rel=stylesheet href="/web/{css}">
 <header class=topbar>
  <span class=brand><b>Studio</b><span>VMC Subastas</span></span>
  <a class=back href="/">Volver al estudio</a>
@@ -148,256 +94,46 @@ HOJA = """<!doctype html><meta charset=utf8>
 """
 
 
-def hoja(titulo, estilo, cuerpo):
+def hoja(titulo, css, cuerpo):
     """La hoja comun con lo propio de cada pagina adentro.
 
-    Con replace y no con format: el CSS esta lleno de llaves."""
-    return (HOJA.replace("{titulo}", titulo).replace("{estilo}", estilo)
+    Con replace y no con format: el HTML esta lleno de llaves."""
+    return (HOJA.replace("{titulo}", titulo).replace("{css}", css)
             .replace("{cuerpo}", cuerpo))
 
 
-ESTILO_AGENDA = """
- /* Panel sobre mesa iluminada, la misma profundidad que las slides del
-    estudio. Antes era un bloque plano que no se distinguia del fondo. */
- table{width:100%;border-collapse:collapse;background:var(--sheet);
-       border:1px solid var(--edge);border-radius:16px;overflow:hidden;
-       box-shadow:var(--lift);
-       backdrop-filter:var(--frost);-webkit-backdrop-filter:var(--frost)}
- td{padding:13px 16px;border-top:1px solid var(--edge);vertical-align:middle}
- tr:first-child td{border-top:0}
- tr:hover td{background:rgba(255,255,255,.022)}
- td.h{font-variant-numeric:tabular-nums;color:var(--ink-2);white-space:nowrap;
-      font-size:13.5px;width:1%}
- td.s{font-weight:600}
- td.n{color:var(--ink-2);font-size:13.5px}
- td.n a{color:var(--green);text-decoration:underline;text-underline-offset:3px}
- td.n a:hover{color:var(--ink)}
 
- /* La insignia de estado habla el mismo idioma que el contador de la barra del
-    estudio: pildora con canto propio y brillo arriba, no una palabra suelta. */
- td b{display:inline-grid;place-items:center;min-width:19px;height:21px;
-   padding:0 9px;border-radius:11px;
-   font-weight:800;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
-   background:var(--raise-2);border:1px solid var(--edge-2);
-   box-shadow:inset 0 1px 0 var(--edge-2);color:var(--ink-2)}
- tr.publicado b{color:var(--green);border-color:rgba(74,222,155,.34)}
- tr.programado b{color:var(--violet-2);border-color:rgba(174,142,255,.40)}
- tr.atrasado b{color:var(--orange);border-color:rgba(237,137,54,.42)}
- tr.error b{color:var(--red);border-color:rgba(248,113,113,.42)}"""
-
-AGENDA_HTML = hoja("Agenda", ESTILO_AGENDA, """ <h1>Agenda</h1>
+AGENDA_HTML = hoja("Agenda", "agenda.css", """ <h1>Agenda</h1>
  <p class=sub>Lo publicado y lo que espera su hora. Un programado solo sale si
  algo corre <code>publicar.py --pendientes</code>.</p>
  <table>{filas}</table>""")
 
 
-# El lote: una oferta por peticion, dos peticiones en vuelo.
-#
-# Cada subasta tarda cerca de un minuto, y medido en esta maquina ese minuto es
-# casi todo espera de red: el modelo que mira las ocho fotos son 35 s, el que
-# escribe el copy unos 20 s, y el render son 7 s de CPU. En fila, esos 55 s de
-# espera no hacen nada.
-#
-# Dos en vuelo los solapan y los renders se serializan solos: el servidor es un
-# ThreadingHTTPServer y en Cloud Run `--concurrency 8` con 2 GiB aguanta dos
-# Chromium (el pico medido de uno es 704 MiB). Cuatro no —ni de memoria ni de
-# CPU—, y ademas cuatro tarjetas cambiando de estado a la vez no se leen. Dos es
-# el numero que sale de la memoria del contenedor, no una preferencia: esta en
-# `EN_VUELO` para poder bajarlo a 1 sin tocar nada mas.
-LOTE_JS = """
-<div class=barra id=barra hidden>
- <b id=cuenta></b>
- <span class=paso id=paso></span>
- <button class=limpiar type=button id=limpiar>Quitar la selección</button>
- <button type=button id=hacer>Hacer los carruseles</button>
- <a id=zip hidden download>Descargar el ZIP</a>
-</div>
-<script>
-const $ = (id) => document.getElementById(id);
-const marcadas = () => [...document.querySelectorAll('.card input:checked')]
-                       .map(i => i.closest('.card'));
 
-function contar() {
-  const n = marcadas().length;
-  $('cuenta').textContent = n === 1 ? '1 subasta elegida'
-                                    : n + ' subastas elegidas';
-  $('barra').hidden = n === 0;
-  $('hacer').disabled = n === 0;
-}
-document.addEventListener('change', e => {
-  if (e.target.matches('.card input')) contar();
-});
-
-$('limpiar').onclick = () => {
-  document.querySelectorAll('.card input:checked').forEach(i => {
-    i.checked = false;
-    // El estado se va con la seleccion: una tarjeta en verde de una tanda
-    // anterior mentiria sobre lo que se acaba de hacer.
-    i.closest('.card').removeAttribute('data-est');
-  });
-  $('paso').textContent = ''; $('zip').hidden = true; contar();
-};
-
-function estado(card, est, texto) {
-  card.dataset.est = est;
-  card.querySelector('.est').textContent = texto;
-}
-
-const EN_VUELO = 2;
-
-$('hacer').onclick = async () => {
-  const cards = marcadas();
-  if (!cards.length) return;
-  $('hacer').disabled = true; $('limpiar').disabled = true; $('zip').hidden = true;
-  $('hacer').textContent = 'Haciendo los carruseles…';
-
-  // Por indice y no con push: con dos en vuelo terminan desordenadas, y el ZIP
-  // tiene que salir en el orden en que estan en pantalla.
-  const slugs = new Array(cards.length).fill(null);
-  let siguiente = 0, cerradas = 0;
-
-  const trabajador = async () => {
-    while (siguiente < cards.length) {
-      const i = siguiente++;
-      const card = cards[i];
-      estado(card, 'haciendo', 'haciendo el carrusel…');
-      card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      try {
-        const r = await fetch('/lote', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ codigo: card.dataset.id }) });
-        const j = await r.json();
-        if (!j.ok) throw new Error(j.error || 'falló');
-        slugs[i] = j.slug;
-        estado(card, 'listo', j.slug);
-      } catch (err) {
-        // Una que falla no detiene el lote: lo normal es que sea una negociable
-        // sin precio base, y las otras nueve no tienen la culpa.
-        estado(card, 'error', err.message);
-      }
-      // Cuantas cerraron, no cual va: con dos en vuelo "3 de 10" no señala nada.
-      cerradas++;
-      $('paso').textContent = `${cerradas} de ${cards.length}`;
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(EN_VUELO, cards.length) },
-                               trabajador));
-
-  const hechos = slugs.filter(Boolean);
-  $('paso').textContent = hechos.length
-    ? `${hechos.length} de ${cards.length} listos`
-    : 'ninguno salió';
-  if (hechos.length) {
-    $('zip').href = '/descargar-lote?slugs=' + encodeURIComponent(hechos.join(','));
-    $('zip').hidden = false;
-  }
-  $('hacer').disabled = false; $('limpiar').disabled = false;
-  $('hacer').textContent = 'Hacer los carruseles';
-};
-
-contar();
-</script>"""
 
 
 # Las ofertas abiertas, en tarjetas. Cada una es un enlace al estudio con su
 # codigo: elegir la subasta es el primer paso del carrusel, y hasta ahora habia
 # que ir a buscar el codigo a la web y volver a pegarlo.
-ESTILO_OFERTAS = """
- /* La hoja comun mide 860px, que es el ancho de la tabla de la agenda. Una
-    rejilla de 61 tarjetas necesita mas, y solo esta pagina lo necesita. */
- main{max-width:1160px}
- .grupo{margin:0 0 34px}
- .grupo h2{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
-           font-size:15px;font-weight:700;letter-spacing:-.01em;margin:0 0 14px;
-           padding-bottom:10px;border-bottom:1px solid var(--edge)}
- .grupo h2 span{color:var(--ink-2);font-weight:500;font-size:13px}
- .grupo h2 b{margin-inline-start:auto;padding:2px 9px;border-radius:11px;
-             font-size:11px;font-weight:800;letter-spacing:.06em;
-             text-transform:uppercase;background:var(--raise-2);
-             border:1px solid var(--edge-2);box-shadow:inset 0 1px 0 var(--edge-2)}
- .grupo.vivo h2 b{color:var(--orange);border-color:rgba(237,137,54,.42)}
- .grupo.negociable h2 b{color:var(--violet-2);border-color:rgba(174,142,255,.40)}
 
- .rejilla{display:grid;gap:14px;
-          grid-template-columns:repeat(auto-fill,minmax(214px,1fr))}
- .card{position:relative;display:flex;flex-direction:column;color:inherit;
-       background:var(--sheet);border:1px solid var(--edge);border-radius:14px;
-       overflow:hidden;box-shadow:var(--lift);
-       backdrop-filter:var(--frost);-webkit-backdrop-filter:var(--frost);
-       transition:border-color .15s,transform .15s}
- .card:hover{border-color:var(--violet);transform:translateY(-2px)}
- /* Elegida: el canto violeta y la marca arriba a la izquierda. El checkbox no
-    se ve; la tarjeta entera es el control. */
- .card:has(input:checked){border-color:var(--violet-2);
-   box-shadow:var(--lift),0 0 0 1px var(--violet-2) inset}
- .card label{display:block;cursor:pointer}
- .card input{position:absolute;opacity:0;pointer-events:none}
- .card .tic{position:absolute;top:9px;left:9px;width:22px;height:22px;
-   border-radius:7px;border:1px solid var(--edge-2);background:rgba(8,5,14,.66);
-   backdrop-filter:blur(6px);display:grid;place-items:center;
-   font:800 12px Jakarta,sans-serif;color:transparent}
- .card:has(input:checked) .tic{background:var(--violet);border-color:var(--violet-2);
-   color:#fff}
- .card:has(input:checked) .tic::after{content:"✓"}
- /* El camino de siempre sigue estando: una oferta a mano, en el estudio. */
- .card .abrir{position:absolute;top:9px;right:9px;padding:4px 9px;border-radius:8px;
-   border:1px solid var(--edge-2);background:rgba(8,5,14,.66);
-   backdrop-filter:blur(6px);font:600 11px Jakarta,sans-serif;
-   color:var(--ink-2);text-decoration:none;opacity:0;transition:opacity .15s}
- .card:hover .abrir,.card .abrir:focus{opacity:1}
- .card .abrir:hover{color:var(--ink);border-color:var(--violet)}
- /* El estado del lote tapa la foto: es lo unico que importa mientras corre. */
- .card .est{position:absolute;inset:0 0 auto;padding:7px 11px;font-size:11.5px;
-   font-weight:600;background:rgba(8,5,14,.82);backdrop-filter:blur(8px);
-   border-bottom:1px solid var(--edge);display:none}
- .card[data-est] .est{display:block}
- .card[data-est="haciendo"] .est{color:var(--violet-2)}
- .card[data-est="listo"] .est{color:var(--green)}
- .card[data-est="error"] .est{color:var(--red);white-space:normal}
- .card[data-est="haciendo"]{border-color:var(--violet-2)}
- .card[data-est="listo"]{border-color:rgba(74,222,155,.45)}
- .card[data-est="error"]{border-color:rgba(248,113,113,.45)}
 
- /* La barra del lote: aparece con la primera elegida y no se va al hacer
-    scroll — con 60 tarjetas, un boton al final de la pagina no existe. */
- .barra{position:sticky;bottom:0;z-index:5;margin:26px 0 0;
-   display:flex;align-items:center;gap:14px;flex-wrap:wrap;
-   padding:13px 18px;border:1px solid var(--edge);border-radius:14px;
-   background:var(--sheet);box-shadow:var(--lift);
-   backdrop-filter:var(--frost);-webkit-backdrop-filter:var(--frost)}
- .barra[hidden]{display:none}
- .barra b{font-size:14px}
- .barra .paso{color:var(--ink-2);font-size:13px;flex:1 1 auto;min-width:10ch}
- .barra button,.barra a{padding:9px 17px;border-radius:9px;
-   font:700 13px Jakarta,system-ui,sans-serif;cursor:pointer;text-decoration:none}
- .barra button{border:1px solid var(--violet-2);background:var(--violet);color:#fff}
- .barra button:disabled{opacity:.5;cursor:default}
- .barra a{border:1px solid rgba(74,222,155,.45);color:var(--green);
-   background:rgba(74,222,155,.10)}
- .barra a[hidden]{display:none}
- .barra .limpiar{border:1px solid var(--edge);background:transparent;
-   color:var(--ink-2);font-weight:600}
- /* La foto es la del CDN y llega en 800x600 con marca de agua a veces: aca
-    solo se elige la subasta, el encuadre se hace despues en el estudio. */
- .card img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;
-           background:var(--raise)}
- .card .txt{display:flex;flex-direction:column;gap:3px;padding:11px 13px 13px}
- .card .nom{font-weight:700;font-size:14px;line-height:1.3;
-            display:flex;gap:6px;align-items:baseline}
- .card .nom i{font-style:normal;color:var(--ink-2);font-weight:500;font-size:12.5px;
-              font-variant-numeric:tabular-nums}
- .card .pre{font-weight:800;font-size:15px;color:var(--green);
-            font-variant-numeric:tabular-nums}
- .card .pre.sin{color:var(--ink-2);font-weight:600;font-size:13px}
- .card .cie{font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
- .card .num{display:flex;align-items:baseline;gap:8px;
-            font-size:11.5px;color:var(--ink-2);opacity:.8;
-            font-variant-numeric:tabular-nums}
- .card .cod{margin-inline-start:auto;font:500 11px ui-monospace,Menlo,monospace;
-            color:var(--ink-2)}
- .vacio{padding:22px;border:1px dashed var(--edge-2);border-radius:14px;
-        color:var(--ink-2)}"""
+def interes(tipo, n):
+    """Live cuenta participantes; negociable, negociaciones. Y una es una."""
+    if tipo == "vivo":
+        return "participante" if n == 1 else "participantes"
+    return "negociación" if n == 1 else "negociaciones"
 
+
+# Los dos iconos que dibuja el servidor. Son del mismo trazo que los de `ICO`
+# en web/ofertas.js: un ✓ de la fuente del sistema no es un icono, es lo que el
+# sistema tenga ese dia.
+_SVG = ('<svg class=ico viewBox="0 0 24 24" fill=none stroke=currentColor '
+        'stroke-width=1.7 stroke-linecap=round stroke-linejoin=round '
+        'aria-hidden=true>{}</svg>')
+ICONO_CHECK = _SVG.format('<path d="M4.5 12.5l5 5 10-11"/>')
+ICONO_FUERA = _SVG.format(
+    '<path d="M14.5 4H20v5.5"/><path d="M20 4l-8.5 8.5"/>'
+    '<path d="M18 14.5V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4.5"/>')
 
 
 def cierre_de_subasta(fecha, hora, hoy):
@@ -480,6 +216,20 @@ def normalizar(f):
 
 
 PAGINA = os.path.join(RAIZ, "estudio.html")
+WEB = os.path.join(RAIZ, "web")
+
+
+def web(nombre):
+    """Un archivo de `web/`, leido en cada pedido.
+
+    El CSS y el javascript de las dos paginas que dibuja el servidor vivian
+    dentro de strings de Python y eran la mitad de este archivo: ningun editor
+    los coloreaba, ningun linter los miraba y editarlos era buscar y reemplazar
+    dentro de una cadena. Ahora son .css y .js de verdad, y el servidor los lee
+    del disco en cada pedido igual que `estudio.html` — recargar el navegador
+    sigue siendo todo lo que hace falta para ver un cambio."""
+    with open(os.path.join(WEB, seguro(nombre)), encoding="utf8") as f:
+        return f.read()
 FUENTE = os.path.join(RAIZ, "remotion", "public", "brand",
                       "plus-jakarta-sans.woff2")
 
@@ -565,6 +315,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # it takes to see a page change, with no restart.
             with open(PAGINA, "rb") as f:
                 return self.responder(200, "text/html; charset=utf8", f.read())
+        if ruta.startswith("/web/"):
+            return self.archivo(os.path.join(WEB, seguro(ruta[5:])), WEB)
         if ruta == "/fuente":
             return self.archivo(FUENTE, os.path.dirname(FUENTE))
         if ruta == "/inicio":
@@ -643,13 +395,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
         y recargar es la unica forma de estar al dia— y el javascript es solo el
         lote: elegir es un checkbox, que no necesita ninguno.
         """
+        def vacio(titulo, dice):
+            return hoja("Ofertas", "ofertas.css",
+                        " <h1>Ofertas</h1>\n"
+                        f' <p class=vacio><b>{titulo}</b>{dice}</p>')
+
         try:
             grupos = api.ofertas()
         except Exception as e:  # noqa: BLE001 - la pagina lo dice, no el log
-            return hoja("Ofertas", ESTILO_OFERTAS,
-                        " <h1>Ofertas</h1>\n"
-                        f' <p class=vacio>No se pudo leer la API: '
-                        f'{html.escape(str(e) or type(e).__name__)}</p>')
+            return vacio("No se pudo leer la API",
+                         f'{html.escape(str(e) or type(e).__name__)}. Recarga la '
+                         f'página; si sigue igual, revisa la conexión.')
+        if not grupos:
+            return vacio("No hay subastas abiertas",
+                         "Cuando vmcsubastas publique la próxima tanda, aparece "
+                         "acá. Mientras tanto se puede reabrir un carrusel hecho "
+                         "con <code>./estudio.sh &lt;slug&gt;</code>.")
 
         cuerpo, total = [], 0
         for g in grupos:
@@ -657,40 +418,54 @@ class Handler(http.server.BaseHTTPRequestHandler):
             for o in g["ofertas"]:
                 total += 1
                 # En negociable la API manda null a proposito: no hay precio base.
-                precio = (f'<span class=pre>US$ {o["precio"]:,.0f}</span>'
+                precio = (f'<span class=pre><s>US$</s>{o["precio"]:,.0f}</span>'
                           if o["precio"] else
                           '<span class="pre sin">Negociable</span>')
                 anio = f'<i>{html.escape(o["anio"])}</i>' if o["anio"] else ""
+                # "Hoy 06:02 pm" es lo unico de la tarjeta que cambia una
+                # decision, asi que el "Hoy" se ve y el resto es dato.
+                cierre = html.escape(o["cierre"])
+                if cierre.startswith("Hoy"):
+                    cierre = "<b>Hoy</b>" + cierre[3:]
                 tarjetas.append(
                     f'<div class=card data-id="{o["id"]}" '
-                    f'data-nombre="{html.escape(o["nombre"], quote=True)}">'
+                    f'data-nombre="{html.escape(o["nombre"], quote=True)}" '
+                    f'data-foto="{html.escape(o["foto"], quote=True)}">'
                     f'<label>'
                     f'<input type=checkbox value="{o["id"]}">'
                     f'<img src="{html.escape(o["foto"])}" alt="" decoding=async>'
-                    f'<span class=tic></span>'
+                    f'<span class=tic>{ICONO_CHECK}</span>'
                     f'<span class=txt>'
                     f'<span class=nom>{html.escape(o["nombre"])}{anio}</span>'
                     f'{precio}'
-                    f'<span class=cie>Cierra {html.escape(o["cierre"])}</span>'
-                    f'<span class=num>{o["vistas"]} vistas · {o["interes"]} '
-                    f'{"participantes" if g["tipo"] == "vivo" else "negociaciones"}'
+                    f'<span class=cie>Cierra {cierre}</span>'
+                    f'<span class=num><span class=vis>{o["vistas"]:,} '
+                    f'{"vista" if o["vistas"] == 1 else "vistas"} · '
+                    f'{o["interes"]} {interes(g["tipo"], o["interes"])}</span>'
                     f'<b class=cod>{o["id"]}</b></span>'
                     f'</span></label>'
-                    f'<a class=abrir href="/estudio?oferta={o["id"]}">Estudio</a>'
+                    f'<a class=abrir href="/estudio?oferta={o["id"]}">'
+                    f'{ICONO_FUERA}Estudio</a>'
                     f'<span class=est></span>'
                     f'</div>')
+            cuantas = len(g["ofertas"])
             cuerpo.append(
                 f'<section class="grupo {g["tipo"]}">'
-                f'<h2>{html.escape(g["fecha"])} <span>{html.escape(g["hora"])}</span>'
-                f'<b>{"en vivo" if g["tipo"] == "vivo" else "negociable"}</b></h2>'
+                f'<h2>{html.escape(g["fecha"])} '
+                f'<span class=hora>{html.escape(g["hora"])}</span>'
+                f'<span class=cuantas>{cuantas} '
+                f'{"subasta" if cuantas == 1 else "subastas"}</span>'
+                f'<b class=sello>{"en vivo" if g["tipo"] == "vivo" else "negociable"}'
+                f'</b></h2>'
                 f'<div class=rejilla>{"".join(tarjetas)}</div></section>')
-        return hoja("Ofertas", ESTILO_OFERTAS,
+        return hoja("Ofertas", "ofertas.css",
                     f" <h1>Ofertas</h1>\n"
                     f" <p class=sub>Las {total} subastas abiertas ahora mismo, "
                     f"directo de la API. Marca las que quieras y el lote hace "
                     f"los carruseles solo: elige las tres fotos mirándolas, "
                     f"renderiza y escribe el copy.</p>\n"
-                    + "\n".join(cuerpo) + LOTE_JS)
+                    + "\n".join(cuerpo) + web("lote.html")
+                    + '<script src="/web/ofertas.js" defer></script>')
 
     def descargar(self, slug):
         """The whole carousel as one ZIP, built in memory: four downloads in a
@@ -831,7 +606,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # El caption despues del render: se escribe desde el datos.json que
         # acaba de dejar `generar`, que es la unica fuente de esos ocho datos.
         self.generar_copy({"slug": hecho["slug"], "siniestrado": chocado})
-        return {"slug": hecho["slug"], "fotos": tres, "siniestrado": chocado}
+        # El modal necesita los slides y el copy para mostrarlos en la misma
+        # pantalla: sin ellos habria que abrir cada carrusel en el estudio.
+        copy_path = os.path.join(POSTS, hecho["slug"], "copy.md")
+        copy_text = ""
+        if os.path.isfile(copy_path):
+            with open(copy_path, encoding="utf8") as f:
+                copy_text = f.read()
+        return {"slug": hecho["slug"], "fotos": tres, "siniestrado": chocado,
+                "slides": hecho["slides"], "copy": copy_text,
+                "nombre": c.get("nombre", "")}
 
     def descargar_lote(self, slugs):
         """Los carruseles de una tanda en un solo ZIP, cada uno en su carpeta.
