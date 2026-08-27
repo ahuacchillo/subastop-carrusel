@@ -49,6 +49,10 @@ hay que cambiar el upload antes que nada.
 
 - [ ] ¿Qué resolución real tiene el original? Para 1080×1080 necesito **≥1080 en el lado
       corto**; hoy el techo es 800×600.
+- [ ] El CDN no tiene nada más grande (probado el 26/08: `l_`, `xl_`, `o_`, `b_`, `original/`,
+      `full/` dan 404, y no hay resizer por query param). Así que el pedido concreto es
+      **publicar un cuarto variante** —`l_<hash>.jpeg` ≥1080— al lado de `s_`, `m_` y el actual.
+      Si el original se guarda en algún bucket, esa URL también sirve.
 - [ ] ¿Viene **sin encajar**? Hoy la web mete la foto en 800×450 y rellena con borroso.
       Quiero el encuadre completo del vendedor, no el letterbox.
 - [ ] ¿Es el JPEG tal cual lo subió el vendedor, o re-encodeado?

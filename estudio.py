@@ -37,7 +37,9 @@ import webbrowser
 import zipfile
 from datetime import date, datetime
 
+import api
 import bucket
+import elegir
 import publicar as publicar_mod
 import scraper
 
@@ -72,8 +74,13 @@ SLUG_INICIAL = sys.argv[1].strip("/").removeprefix("Posts/") if len(sys.argv) > 
 # La agenda, en su propia pagina y sin javascript, pero con la misma hoja que
 # el estudio: barra, superficies, insignias y tipografia. Es la otra vista del
 # mismo producto, y cruzar el enlace no puede sentirse como salir de el.
-AGENDA_HTML = """<!doctype html><meta charset=utf8>
-<title>Agenda — Estudio VMC</title>
+# Las dos paginas que el servidor dibuja —la agenda y las ofertas— comparten
+# hoja con estudio.html: barra, superficies, insignias y tipografia. Cruzar un
+# enlace no puede sentirse como salir del producto. Los tokens siguen siendo una
+# copia de los de estudio.html y tienen que moverse con ella; lo que no puede
+# haber es una tercera copia, que fue como esta pagina habia derivado sola.
+HOJA = """<!doctype html><meta charset=utf8>
+<title>{titulo} — Estudio VMC</title>
 <style>
  /* Los tokens son una copia de estudio.html y tienen que moverse con ella: son
     dos documentos, no dos productos. Antes esta pagina habia derivado sola —su
@@ -129,6 +136,27 @@ AGENDA_HTML = """<!doctype html><meta charset=utf8>
       padding:2px 6px;border-radius:6px;background:var(--raise);
       border:1px solid var(--edge);color:var(--ink);white-space:nowrap}
 
+{estilo}
+</style>
+<header class=topbar>
+ <span class=brand><b>Studio</b><span>VMC Subastas</span></span>
+ <a class=back href="/">Volver al estudio</a>
+</header>
+<main>
+{cuerpo}
+</main>
+"""
+
+
+def hoja(titulo, estilo, cuerpo):
+    """La hoja comun con lo propio de cada pagina adentro.
+
+    Con replace y no con format: el CSS esta lleno de llaves."""
+    return (HOJA.replace("{titulo}", titulo).replace("{estilo}", estilo)
+            .replace("{cuerpo}", cuerpo))
+
+
+ESTILO_AGENDA = """
  /* Panel sobre mesa iluminada, la misma profundidad que las slides del
     estudio. Antes era un bloque plano que no se distinguia del fondo. */
  table{width:100%;border-collapse:collapse;background:var(--sheet);
@@ -155,19 +183,221 @@ AGENDA_HTML = """<!doctype html><meta charset=utf8>
  tr.publicado b{color:var(--green);border-color:rgba(74,222,155,.34)}
  tr.programado b{color:var(--violet-2);border-color:rgba(174,142,255,.40)}
  tr.atrasado b{color:var(--orange);border-color:rgba(237,137,54,.42)}
- tr.error b{color:var(--red);border-color:rgba(248,113,113,.42)}
-</style>
-<header class=topbar>
- <span class=brand><b>Studio</b><span>VMC Subastas</span></span>
- <a class=back href="/">Volver al estudio</a>
-</header>
-<main>
- <h1>Agenda</h1>
+ tr.error b{color:var(--red);border-color:rgba(248,113,113,.42)}"""
+
+AGENDA_HTML = hoja("Agenda", ESTILO_AGENDA, """ <h1>Agenda</h1>
  <p class=sub>Lo publicado y lo que espera su hora. Un programado solo sale si
  algo corre <code>publicar.py --pendientes</code>.</p>
- <table>{filas}</table>
-</main>
-"""
+ <table>{filas}</table>""")
+
+
+# El lote: una oferta por peticion, dos peticiones en vuelo.
+#
+# Cada subasta tarda cerca de un minuto, y medido en esta maquina ese minuto es
+# casi todo espera de red: el modelo que mira las ocho fotos son 35 s, el que
+# escribe el copy unos 20 s, y el render son 7 s de CPU. En fila, esos 55 s de
+# espera no hacen nada.
+#
+# Dos en vuelo los solapan y los renders se serializan solos: el servidor es un
+# ThreadingHTTPServer y en Cloud Run `--concurrency 8` con 2 GiB aguanta dos
+# Chromium (el pico medido de uno es 704 MiB). Cuatro no —ni de memoria ni de
+# CPU—, y ademas cuatro tarjetas cambiando de estado a la vez no se leen. Dos es
+# el numero que sale de la memoria del contenedor, no una preferencia: esta en
+# `EN_VUELO` para poder bajarlo a 1 sin tocar nada mas.
+LOTE_JS = """
+<div class=barra id=barra hidden>
+ <b id=cuenta></b>
+ <span class=paso id=paso></span>
+ <button class=limpiar type=button id=limpiar>Quitar la selección</button>
+ <button type=button id=hacer>Hacer los carruseles</button>
+ <a id=zip hidden download>Descargar el ZIP</a>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const marcadas = () => [...document.querySelectorAll('.card input:checked')]
+                       .map(i => i.closest('.card'));
+
+function contar() {
+  const n = marcadas().length;
+  $('cuenta').textContent = n === 1 ? '1 subasta elegida'
+                                    : n + ' subastas elegidas';
+  $('barra').hidden = n === 0;
+  $('hacer').disabled = n === 0;
+}
+document.addEventListener('change', e => {
+  if (e.target.matches('.card input')) contar();
+});
+
+$('limpiar').onclick = () => {
+  document.querySelectorAll('.card input:checked').forEach(i => {
+    i.checked = false;
+    // El estado se va con la seleccion: una tarjeta en verde de una tanda
+    // anterior mentiria sobre lo que se acaba de hacer.
+    i.closest('.card').removeAttribute('data-est');
+  });
+  $('paso').textContent = ''; $('zip').hidden = true; contar();
+};
+
+function estado(card, est, texto) {
+  card.dataset.est = est;
+  card.querySelector('.est').textContent = texto;
+}
+
+const EN_VUELO = 2;
+
+$('hacer').onclick = async () => {
+  const cards = marcadas();
+  if (!cards.length) return;
+  $('hacer').disabled = true; $('limpiar').disabled = true; $('zip').hidden = true;
+  $('hacer').textContent = 'Haciendo los carruseles…';
+
+  // Por indice y no con push: con dos en vuelo terminan desordenadas, y el ZIP
+  // tiene que salir en el orden en que estan en pantalla.
+  const slugs = new Array(cards.length).fill(null);
+  let siguiente = 0, cerradas = 0;
+
+  const trabajador = async () => {
+    while (siguiente < cards.length) {
+      const i = siguiente++;
+      const card = cards[i];
+      estado(card, 'haciendo', 'haciendo el carrusel…');
+      card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      try {
+        const r = await fetch('/lote', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codigo: card.dataset.id }) });
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || 'falló');
+        slugs[i] = j.slug;
+        estado(card, 'listo', j.slug);
+      } catch (err) {
+        // Una que falla no detiene el lote: lo normal es que sea una negociable
+        // sin precio base, y las otras nueve no tienen la culpa.
+        estado(card, 'error', err.message);
+      }
+      // Cuantas cerraron, no cual va: con dos en vuelo "3 de 10" no señala nada.
+      cerradas++;
+      $('paso').textContent = `${cerradas} de ${cards.length}`;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(EN_VUELO, cards.length) },
+                               trabajador));
+
+  const hechos = slugs.filter(Boolean);
+  $('paso').textContent = hechos.length
+    ? `${hechos.length} de ${cards.length} listos`
+    : 'ninguno salió';
+  if (hechos.length) {
+    $('zip').href = '/descargar-lote?slugs=' + encodeURIComponent(hechos.join(','));
+    $('zip').hidden = false;
+  }
+  $('hacer').disabled = false; $('limpiar').disabled = false;
+  $('hacer').textContent = 'Hacer los carruseles';
+};
+
+contar();
+</script>"""
+
+
+# Las ofertas abiertas, en tarjetas. Cada una es un enlace al estudio con su
+# codigo: elegir la subasta es el primer paso del carrusel, y hasta ahora habia
+# que ir a buscar el codigo a la web y volver a pegarlo.
+ESTILO_OFERTAS = """
+ /* La hoja comun mide 860px, que es el ancho de la tabla de la agenda. Una
+    rejilla de 61 tarjetas necesita mas, y solo esta pagina lo necesita. */
+ main{max-width:1160px}
+ .grupo{margin:0 0 34px}
+ .grupo h2{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
+           font-size:15px;font-weight:700;letter-spacing:-.01em;margin:0 0 14px;
+           padding-bottom:10px;border-bottom:1px solid var(--edge)}
+ .grupo h2 span{color:var(--ink-2);font-weight:500;font-size:13px}
+ .grupo h2 b{margin-inline-start:auto;padding:2px 9px;border-radius:11px;
+             font-size:11px;font-weight:800;letter-spacing:.06em;
+             text-transform:uppercase;background:var(--raise-2);
+             border:1px solid var(--edge-2);box-shadow:inset 0 1px 0 var(--edge-2)}
+ .grupo.vivo h2 b{color:var(--orange);border-color:rgba(237,137,54,.42)}
+ .grupo.negociable h2 b{color:var(--violet-2);border-color:rgba(174,142,255,.40)}
+
+ .rejilla{display:grid;gap:14px;
+          grid-template-columns:repeat(auto-fill,minmax(214px,1fr))}
+ .card{position:relative;display:flex;flex-direction:column;color:inherit;
+       background:var(--sheet);border:1px solid var(--edge);border-radius:14px;
+       overflow:hidden;box-shadow:var(--lift);
+       backdrop-filter:var(--frost);-webkit-backdrop-filter:var(--frost);
+       transition:border-color .15s,transform .15s}
+ .card:hover{border-color:var(--violet);transform:translateY(-2px)}
+ /* Elegida: el canto violeta y la marca arriba a la izquierda. El checkbox no
+    se ve; la tarjeta entera es el control. */
+ .card:has(input:checked){border-color:var(--violet-2);
+   box-shadow:var(--lift),0 0 0 1px var(--violet-2) inset}
+ .card label{display:block;cursor:pointer}
+ .card input{position:absolute;opacity:0;pointer-events:none}
+ .card .tic{position:absolute;top:9px;left:9px;width:22px;height:22px;
+   border-radius:7px;border:1px solid var(--edge-2);background:rgba(8,5,14,.66);
+   backdrop-filter:blur(6px);display:grid;place-items:center;
+   font:800 12px Jakarta,sans-serif;color:transparent}
+ .card:has(input:checked) .tic{background:var(--violet);border-color:var(--violet-2);
+   color:#fff}
+ .card:has(input:checked) .tic::after{content:"✓"}
+ /* El camino de siempre sigue estando: una oferta a mano, en el estudio. */
+ .card .abrir{position:absolute;top:9px;right:9px;padding:4px 9px;border-radius:8px;
+   border:1px solid var(--edge-2);background:rgba(8,5,14,.66);
+   backdrop-filter:blur(6px);font:600 11px Jakarta,sans-serif;
+   color:var(--ink-2);text-decoration:none;opacity:0;transition:opacity .15s}
+ .card:hover .abrir,.card .abrir:focus{opacity:1}
+ .card .abrir:hover{color:var(--ink);border-color:var(--violet)}
+ /* El estado del lote tapa la foto: es lo unico que importa mientras corre. */
+ .card .est{position:absolute;inset:0 0 auto;padding:7px 11px;font-size:11.5px;
+   font-weight:600;background:rgba(8,5,14,.82);backdrop-filter:blur(8px);
+   border-bottom:1px solid var(--edge);display:none}
+ .card[data-est] .est{display:block}
+ .card[data-est="haciendo"] .est{color:var(--violet-2)}
+ .card[data-est="listo"] .est{color:var(--green)}
+ .card[data-est="error"] .est{color:var(--red);white-space:normal}
+ .card[data-est="haciendo"]{border-color:var(--violet-2)}
+ .card[data-est="listo"]{border-color:rgba(74,222,155,.45)}
+ .card[data-est="error"]{border-color:rgba(248,113,113,.45)}
+
+ /* La barra del lote: aparece con la primera elegida y no se va al hacer
+    scroll — con 60 tarjetas, un boton al final de la pagina no existe. */
+ .barra{position:sticky;bottom:0;z-index:5;margin:26px 0 0;
+   display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+   padding:13px 18px;border:1px solid var(--edge);border-radius:14px;
+   background:var(--sheet);box-shadow:var(--lift);
+   backdrop-filter:var(--frost);-webkit-backdrop-filter:var(--frost)}
+ .barra[hidden]{display:none}
+ .barra b{font-size:14px}
+ .barra .paso{color:var(--ink-2);font-size:13px;flex:1 1 auto;min-width:10ch}
+ .barra button,.barra a{padding:9px 17px;border-radius:9px;
+   font:700 13px Jakarta,system-ui,sans-serif;cursor:pointer;text-decoration:none}
+ .barra button{border:1px solid var(--violet-2);background:var(--violet);color:#fff}
+ .barra button:disabled{opacity:.5;cursor:default}
+ .barra a{border:1px solid rgba(74,222,155,.45);color:var(--green);
+   background:rgba(74,222,155,.10)}
+ .barra a[hidden]{display:none}
+ .barra .limpiar{border:1px solid var(--edge);background:transparent;
+   color:var(--ink-2);font-weight:600}
+ /* La foto es la del CDN y llega en 800x600 con marca de agua a veces: aca
+    solo se elige la subasta, el encuadre se hace despues en el estudio. */
+ .card img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;
+           background:var(--raise)}
+ .card .txt{display:flex;flex-direction:column;gap:3px;padding:11px 13px 13px}
+ .card .nom{font-weight:700;font-size:14px;line-height:1.3;
+            display:flex;gap:6px;align-items:baseline}
+ .card .nom i{font-style:normal;color:var(--ink-2);font-weight:500;font-size:12.5px;
+              font-variant-numeric:tabular-nums}
+ .card .pre{font-weight:800;font-size:15px;color:var(--green);
+            font-variant-numeric:tabular-nums}
+ .card .pre.sin{color:var(--ink-2);font-weight:600;font-size:13px}
+ .card .cie{font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+ .card .num{display:flex;align-items:baseline;gap:8px;
+            font-size:11.5px;color:var(--ink-2);opacity:.8;
+            font-variant-numeric:tabular-nums}
+ .card .cod{margin-inline-start:auto;font:500 11px ui-monospace,Menlo,monospace;
+            color:var(--ink-2)}
+ .vacio{padding:22px;border:1px dashed var(--edge-2);border-radius:14px;
+        color:var(--ink-2)}"""
+
 
 
 def cierre_de_subasta(fecha, hora, hoy):
@@ -319,7 +549,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # unquote: WhatsApp file names carry spaces and the browser sends them
         # as %20. Without this the thumbnail comes out broken.
         ruta = urllib.parse.unquote(self.path.split("?")[0])
+        # La entrada es la lista de subastas: lo primero es elegir cual, y
+        # hasta ahora habia que ir a buscar el codigo a la web y pegarlo.
+        # Reabrir un carrusel hecho (`./estudio.sh <slug>`) sigue entrando
+        # derecho al estudio: ahi la subasta ya esta elegida.
         if ruta == "/":
+            if not SLUG_INICIAL:
+                return self.responder(200, "text/html; charset=utf8",
+                                      self.ofertas().encode("utf8"))
+            return self.responder(302, "text/plain", b"", {"Location": "/estudio"})
+        if ruta in ("/estudio", "/ofertas"):
+            if ruta == "/ofertas":               # el enlace viejo, a su sitio
+                return self.responder(302, "text/plain", b"", {"Location": "/"})
             # From disk rather than a constant: reloading the browser is all
             # it takes to see a page change, with no restart.
             with open(PAGINA, "rb") as f:
@@ -351,6 +592,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if ruta == "/agenda":
             return self.responder(200, "text/html; charset=utf8",
                                   self.agenda().encode("utf8"))
+        if ruta == "/descargar-lote":
+            pedido = urllib.parse.parse_qs(
+                urllib.parse.urlparse(self.path).query).get("slugs", [""])[0]
+            return self.descargar_lote([seguro(x) for x in pedido.split(",") if x])
         if ruta.startswith("/descargar/"):
             return self.descargar(seguro(ruta.split("/", 2)[2]))
         self.responder(404, "text/plain", b"no existe")
@@ -385,6 +630,67 @@ class Handler(http.server.BaseHTTPRequestHandler):
             cuerpo = ['<tr><td colspan="4" class="n">Nada publicado ni programado '
                       'todavia.</td></tr>']
         return AGENDA_HTML.replace("{filas}", "\n".join(cuerpo))
+
+    def ofertas(self):
+        """Las subastas abiertas, traidas de la API, para elegir varias.
+
+        Es la pagina de entrada. Se marcan las que van a salir esta semana y un
+        boton las hace todas: baja las fotos, un modelo elige las tres, se
+        renderiza y se escribe el copy. El estudio queda para la correccion a
+        mano, a un clic de cada tarjeta.
+
+        El HTML lo dibuja el servidor —la lista cambia cuando cierra una subasta
+        y recargar es la unica forma de estar al dia— y el javascript es solo el
+        lote: elegir es un checkbox, que no necesita ninguno.
+        """
+        try:
+            grupos = api.ofertas()
+        except Exception as e:  # noqa: BLE001 - la pagina lo dice, no el log
+            return hoja("Ofertas", ESTILO_OFERTAS,
+                        " <h1>Ofertas</h1>\n"
+                        f' <p class=vacio>No se pudo leer la API: '
+                        f'{html.escape(str(e) or type(e).__name__)}</p>')
+
+        cuerpo, total = [], 0
+        for g in grupos:
+            tarjetas = []
+            for o in g["ofertas"]:
+                total += 1
+                # En negociable la API manda null a proposito: no hay precio base.
+                precio = (f'<span class=pre>US$ {o["precio"]:,.0f}</span>'
+                          if o["precio"] else
+                          '<span class="pre sin">Negociable</span>')
+                anio = f'<i>{html.escape(o["anio"])}</i>' if o["anio"] else ""
+                tarjetas.append(
+                    f'<div class=card data-id="{o["id"]}" '
+                    f'data-nombre="{html.escape(o["nombre"], quote=True)}">'
+                    f'<label>'
+                    f'<input type=checkbox value="{o["id"]}">'
+                    f'<img src="{html.escape(o["foto"])}" alt="" decoding=async>'
+                    f'<span class=tic></span>'
+                    f'<span class=txt>'
+                    f'<span class=nom>{html.escape(o["nombre"])}{anio}</span>'
+                    f'{precio}'
+                    f'<span class=cie>Cierra {html.escape(o["cierre"])}</span>'
+                    f'<span class=num>{o["vistas"]} vistas · {o["interes"]} '
+                    f'{"participantes" if g["tipo"] == "vivo" else "negociaciones"}'
+                    f'<b class=cod>{o["id"]}</b></span>'
+                    f'</span></label>'
+                    f'<a class=abrir href="/estudio?oferta={o["id"]}">Estudio</a>'
+                    f'<span class=est></span>'
+                    f'</div>')
+            cuerpo.append(
+                f'<section class="grupo {g["tipo"]}">'
+                f'<h2>{html.escape(g["fecha"])} <span>{html.escape(g["hora"])}</span>'
+                f'<b>{"en vivo" if g["tipo"] == "vivo" else "negociable"}</b></h2>'
+                f'<div class=rejilla>{"".join(tarjetas)}</div></section>')
+        return hoja("Ofertas", ESTILO_OFERTAS,
+                    f" <h1>Ofertas</h1>\n"
+                    f" <p class=sub>Las {total} subastas abiertas ahora mismo, "
+                    f"directo de la API. Marca las que quieras y el lote hace "
+                    f"los carruseles solo: elige las tres fotos mirándolas, "
+                    f"renderiza y escribe el copy.</p>\n"
+                    + "\n".join(cuerpo) + LOTE_JS)
 
     def descargar(self, slug):
         """The whole carousel as one ZIP, built in memory: four downloads in a
@@ -460,6 +766,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             largo = int(self.headers.get("Content-Length", 0))
             cuerpo = json.loads(self.rfile.read(largo) or b"{}")
             accion = {"/oferta": self.oferta, "/subir": self.subir,
+                      "/lote": self.lote,
                       "/generar": self.generar, "/copy": self.copy,
                       "/generar-copy": self.generar_copy,
                       "/publicar": self.publicar}.get(self.path)
@@ -478,8 +785,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         datos, urls = scraper.leer(codigo)
         carpeta = os.path.join(MATERIALES, codigo)
         scraper.bajar(urls, carpeta)
+        # Lo que el scraper no encontro y la pagina rellena con un valor por
+        # defecto. En el estudio eso es comodidad —el campo se ve y se corrige—;
+        # en el lote seria publicar "Mecánica" sobre una caja automatica.
         return {
             "codigo": codigo, "carpeta": codigo,
+            "faltan": [k for k in ("ANIO", "TRANSMISION") if not datos.get(k)],
             "fotos": [{"archivo": f, "carpeta": codigo,
                        "url": f"/foto/{codigo}/{f}"}
                       for f in listar(carpeta)],
@@ -491,6 +802,64 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "hora": datos.get("HORA", ""), "tienda": datos.get("TIENDA", ""),
             },
         }
+
+    def lote(self, c):
+        """Una subasta entera, de codigo a carrusel con copy, sin tocar nada.
+
+        No hay ni un paso nuevo: es `oferta` + `generar` + `generar_copy`, los
+        tres que ya usa la pagina del estudio, con el unico agregado de que las
+        tres fotos las elige un modelo mirandolas en vez de una persona. Si
+        alguno se cae, se cae este pedido y no la fila entera: la tarjeta lo
+        dice y el lote sigue con la siguiente.
+        """
+        pedido = self.oferta(c)                     # datos + fotos, en 800x600
+        if pedido["faltan"]:
+            raise ValueError("la web no dio " + " ni ".join(
+                x.lower() for x in pedido["faltan"]) + "; ábrela en el estudio")
+        carpeta = os.path.join(MATERIALES, pedido["carpeta"])
+        # Portada de frente, interior o lateral, y la trasera con la placa. Y el
+        # foco de cada una: la foto es 4:3 y el slide 1:1, asi que `cover`
+        # recorta los lados, y centrado a ciegas le cortaba la cabina a una
+        # camioneta que en la foto estaba corrida a la izquierda. Lo mide quien
+        # ya esta mirando las ocho fotos.
+        tres, chocado, focos = elegir.mirar(carpeta)
+        hecho = self.generar({
+            "codigo": pedido["codigo"], "datos": pedido["datos"],
+            "fotos": [{"archivo": f, "carpeta": pedido["carpeta"],
+                       "foco": foco, "escala": 1}
+                      for f, foco in zip(tres, focos)]})
+        # El caption despues del render: se escribe desde el datos.json que
+        # acaba de dejar `generar`, que es la unica fuente de esos ocho datos.
+        self.generar_copy({"slug": hecho["slug"], "siniestrado": chocado})
+        return {"slug": hecho["slug"], "fotos": tres, "siniestrado": chocado}
+
+    def descargar_lote(self, slugs):
+        """Los carruseles de una tanda en un solo ZIP, cada uno en su carpeta.
+
+        Uno por uno son cuatro PNG y un copy.md por subasta, todos con el mismo
+        nombre: sin carpeta dentro del ZIP, diez subastas son cuarenta archivos
+        llamados `1.png`.
+        """
+        buf = io.BytesIO()
+        adentro = 0
+        # Almacenado y no comprimido: el PNG ya viene comprimido y deflate
+        # gastaria CPU para no ahorrar nada.
+        with zipfile.ZipFile(buf, "w") as z:
+            for slug in slugs:
+                carpeta = os.path.join(POSTS, slug)
+                for archivo in listar(carpeta):   # listar() ordena: 1, 2, 3, 4
+                    if archivo.lower().endswith(".png"):
+                        z.write(os.path.join(carpeta, archivo), f"{slug}/{archivo}")
+                        adentro += 1
+                # El copy va con sus slides: publicar es pegar las dos cosas, y
+                # `listar` solo devuelve imagenes.
+                texto = os.path.join(carpeta, "copy.md")
+                if os.path.isfile(texto):
+                    z.write(texto, f"{slug}/copy.md")
+        if not adentro:
+            return self.responder(404, "text/plain", b"no existe")
+        self.responder(200, "application/zip", buf.getvalue(),
+                       {"Content-Disposition": 'attachment; filename="carruseles.zip"'})
 
     def subir(self, c):
         # With no code the photos get their own folder, so they never mix with

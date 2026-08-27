@@ -116,12 +116,17 @@ const Header: React.FC<{ tienda: string }> = ({ tienda }) => (
       left: 44.875,
       top: 49.02,
       width: 372,
-      height: 104,
+      // ponytail: alto minimo, no alto fijo. El spec dice 104 y con un nombre
+      // de una linea eso es lo que mide. "Pandero Seminuevos" no cabe en 257px
+      // a 28px, envuelve a dos lineas, y con `height: 104` la segunda salia
+      // colgando por debajo del vidrio. Crece el panel, no se recorta el
+      // nombre: el vendedor es la mitad de la credibilidad del post.
+      minHeight: 104,
       borderRadius: 13.955,
       display: "flex",
       alignItems: "center",
       gap: 14,
-      paddingLeft: 16.5,
+      padding: "14px 16.5px",
       boxSizing: "border-box",
       ...glassLigero,
     }}
@@ -150,7 +155,15 @@ const Header: React.FC<{ tienda: string }> = ({ tienda }) => (
     >
       {tienda.charAt(0).toUpperCase()}
     </div>
-    <div style={{ fontFamily: sans, color: color.white, textShadow: shadow.textHeader }}>
+    <div
+      style={{
+        fontFamily: sans,
+        color: color.white,
+        textShadow: shadow.textHeader,
+        lineHeight: 1.2,
+        minWidth: 0,
+      }}
+    >
       <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "0.2px" }}>
         Tienda oficial
       </div>

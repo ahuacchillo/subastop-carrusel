@@ -7,11 +7,51 @@ Todo lo de este documento se corre desde `carrusel/`, y todas sus rutas son
 relativas a esta carpeta. El otro producto del repo —los reels verticales de
 marca— vive en `../reels/` y tiene su propio pipeline: [`../reels/REELS.md`](../reels/REELS.md).
 
-## El estudio — el camino sin terminal
+## Las ofertas — la pantalla de entrada
 
 ```bash
 ./estudio.sh
 ```
+
+Abre la lista de **todas las subastas abiertas ahora mismo**, traída de la API de
+vmcsubastas (`api.py`). Una tarjeta por oferta con su foto, precio base, hora de
+cierre y código.
+
+- **Marcar varias** y *Hacer los carruseles* — el lote las hace solas, una
+  detrás de otra: baja las fotos, un modelo las mira y elige las tres, renderiza
+  y escribe el copy. Cada tarjeta va diciendo en qué anda, y la que falle no
+  detiene a las demás. Al terminar, un ZIP con todo.
+- **Estudio**, en la esquina de cada tarjeta — la misma subasta, a mano, con el
+  encuadre y los datos editables. Es el camino de siempre.
+
+Cerca de un minuto por subasta, y van en fila y no en paralelo: cuatro
+navegadores de Remotion y cuatro modelos a la vez terminan más tarde que uno
+detrás de otro, y además no se sabe cuál falló.
+
+### Las tres fotos las elige quien las mira
+
+`elegir.py` le pasa la galería al modelo y pide un orden que es siempre el mismo:
+
+1. **Portada** — el auto de frente.
+2. El **interior**; si la galería no trae ninguna del interior, una **lateral**.
+3. La **trasera**, y de esas la que deje leer la placa.
+
+De paso responde si la unidad está **chocada**, que es lo que decide el ángulo
+del copy: una siniestrada se vende por rentabilidad de reacondicionar y no se
+esconde. Sin esa pregunta el lote escribiría "en buen estado" sobre la foto de
+un parachoques partido.
+
+Nada de eso se cree a ciegas: lo que el modelo responde se contrasta con las
+fotos que de verdad hay en la carpeta, y lo que falte o venga repetido se
+rellena en orden de galería. Un carrusel mal ordenado es un carrusel malo; uno
+que no existe porque el modelo escribió mal un nombre de archivo no es nada.
+
+Dos datos siguen siendo motivo de rechazo en el lote: si la web no dio **año** o
+**transmisión**, esa tarjeta falla y hay que abrirla en el estudio. Ahí el
+formulario los rellena con un valor por defecto porque hay una persona
+mirándolos; en un lote nadie los mira.
+
+## El estudio — el carrusel a mano
 
 Abre una página en el navegador con todo a la vista, sin scroll: las fotos a la
 izquierda, el auto en el centro, los datos a la derecha. **La interfaz está en
@@ -19,6 +59,7 @@ inglés** — las piezas que produce siguen en español.
 
 - **Arriba** se pega el código (`63015`) o el link y se presiona *Fetch*. Trae
   marca, modelo, año, transmisión, precio, fecha, hora, tienda y la galería.
+- **Browse**, al lado — vuelve a la lista de ofertas.
 - **Photos**, a la izquierda — **no viene nada preseleccionado**: la galería llega
   entera y apagada. Clic en una foto para sumarla, clic otra vez para quitarla, y
   las que quedan se renumeran solas. **El orden en que se tocan es el orden del
@@ -259,10 +300,19 @@ El slug lleva el código de oferta adelante (`62996-toyota-hilux`) porque es el
 único nombre que no cambia si después se corrige la marca, y es lo que se busca
 cuando hay que volver a la publicación original.
 
-**4. Render.** Delega en `./ajustar.sh <slug> --render`, que renderiza un slide
-por vez desde el `datos.json` y copia la placa de cierre al final. Hay un solo
-camino de render en todo el proyecto: lo que se arregla ahí, se arregla para
-todos los modos de entrada.
+**4. Render.** Delega en `./ajustar.sh <slug> --render`, que amplía las fotos,
+renderiza un slide por vez desde el `datos.json` y copia la placa de cierre al
+final. Hay un solo camino de render en todo el proyecto: lo que se arregla ahí,
+se arregla para todos los modos de entrada.
+
+La ampliación es el primer paso y existe porque el CDN de vmcsubastas solo
+publica 800×600 (ver `API-INTEGRACION.md` §4): con `cover`, un slide de
+1080×1080 necesita la foto a 1440×1080, y Chrome la ampliaba 1.8× interpolando
+barato. `ajustar.sh` la lleva antes a 1440 de lado corto con Lanczos y un
+unsharp leve, así el navegador **reduce** en vez de ampliar. No inventa detalle
+que la foto no tiene —eso solo lo arregla desarrollo— pero el borde llega
+definido en vez de blando. Solo toca las fotos cuyo lado corto no llega a 1440,
+así que es idempotente: rehacer el render no las vuelve a procesar.
 
 ### Modos
 
@@ -294,6 +344,22 @@ es una decisión suya, no del sitio.
 
 Es un wrapper de `nueva-subasta.sh 62996 --fotos <carpeta>` — un solo generador,
 tres formas de entrar.
+
+### Dos lecturas del sitio, y por qué siguen separadas
+
+- `elegir.py` — mira las fotos de una oferta y elige las tres del carrusel.
+- `api.py` — la **lista** de subastas abiertas, de `support/offer-groups`. Es la
+  API oficial y no pide token, así que funciona igual en el escritorio y en el
+  contenedor. Trae lo justo para elegir: nombre, año, precio base, hora de cierre
+  y la miniatura.
+- `scraper.py` — **una** oferta, leyendo el HTML de su página. Sigue siendo la
+  única forma de sacar la transmisión y la galería completa: los endpoints que
+  las traen (`offers/state`) piden un token Bearer y una IP en la allowlist que
+  todavía no tenemos. El detalle de qué falta está en
+  [`API-INTEGRACION.md`](API-INTEGRACION.md).
+
+El día que llegue el token, la lista no cambia y el scraper se reemplaza por
+dentro: la página no distingue de dónde salieron los ocho datos.
 
 ### La marca de agua — se pide el original, no se despeja
 
@@ -382,6 +448,15 @@ alrededor del foco, no del centro. Un string suelto es lo mismo que
 `datos.json` viejos siguen renderizando byte a byte igual.
 
 Pero a mano no se aciertan esos números: se ajustan en el estudio, arrastrando.
+
+**En el lote nadie arrastra**, así que el `foco` lo mide el mismo modelo que ya
+elige las tres fotos: `elegir.mirar()` devuelve, junto a los nombres, dónde está
+el centro del auto de izquierda a derecha, y el lote lo escribe en el
+`datos.json`. Solo el eje X — la foto es 4:3 y el slide 1:1, así que `cover`
+recorta los lados y nunca el alto; preguntar por una Y sería pedir un dato que
+el render tira. Se recorta a 15–85%: un 0 pega el auto contra el borde, y ahí
+vive la tarjeta de datos. Lo que el modelo no mida, o mida mal, cae en
+`"50% 50%"`, que es lo que el lote hacía antes.
 
 ```bash
 ./estudio.sh 62915-dfsk-glory            # reabrir para reencuadrar
@@ -582,14 +657,19 @@ por qué está más abajo, con el borrador que la trajo.
 Sin CLI ni clave, el resto del estudio sigue funcionando y el textarea se
 escribe a mano.
 
-**Sin CLI: la clave de DeepSeek.** El botón ya no exige Claude Code. `generar_copy()`
-se bifurca por el entorno:
+**Sin CLI: la clave de DeepSeek.** Con `DEEPSEEK_API_KEY` se resuelven dos pasos
+sin necesidad de Claude Code:
 
-- Con `DEEPSEEK_API_KEY` → llamada directa a `api.deepseek.com` (modelo
-  `deepseek-chat`), mandando `.claude/skills/vmc-ig-copy-ficha-tecnica/SKILL.md`
-  como prompt de sistema y los datos de la subasta como mensaje. Con `urllib` de
-  la stdlib basta: no hace falta el SDK y el proyecto se queda sin dependencias.
-- Sin la variable → el `subprocess.run` del CLI de Claude, que sigue igual.
+1. **Selección de fotos** — `elegir.py` manda las fotos en base64 al modelo de
+   visión `deepseek-v4-flash-vision-exp`, que clasifica vistas, elige las tres,
+   mide el `centro_x` y detecta siniestro. Misma respuesta JSON que antes, misma
+   validación contra los archivos reales.
+2. **Copy** — `generar_copy()` manda la skill como prompt de sistema al modelo
+   `deepseek-chat` y los datos como mensaje. Misma entrega en `copy.md`.
+
+Con `urllib` de la stdlib basta: no hace falta el SDK y el proyecto se queda sin
+dependencias. Sin la variable, los dos pasos caen al `subprocess.run` del CLI de
+Claude, que sigue igual.
 
 Los dos caminos comparten el mismo bloque de datos y reglas del prompt, así que
 una corrección se hace una vez. La respuesta se escribe en el mismo `copy.md` y

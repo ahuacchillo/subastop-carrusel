@@ -39,6 +39,33 @@ fi
 # 9.9 s contra 5.4 s, y los PNG salen byte-idénticos.
 SLIDES="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["fotos"]))' "$DATOS")"
 
+# ── Agrandar las fotos antes de renderizar ───────────────────────────────────
+# El CDN de vmcsubastas solo publica 800x600 y el slide es 1080x1080: con
+# `cover` la foto tiene que llegar a 1440x1080, y Chrome la ampliaba 1.8x
+# interpolando barato. Ampliada acá a 1440 de lado corto con Lanczos y un
+# unsharp leve, el navegador *reduce* en vez de ampliar —que es la operación que
+# hace bien— y el borde llega definido en vez de blando. No inventa detalle que
+# la foto no tiene; deja de perder el que hay.
+#
+# Va acá y no en los dos scripts que copian fotos (`estudio.py` y
+# `nueva-subasta.sh`) porque acá pasan las dos.
+#
+# ponytail: 1440 de lado corto, un tercio de más sobre lo que el slide pide.
+# Con `escala` > 1 el slide muestra menos foto y querría más; subir el mínimo
+# cuando alguien use zoom fuerte, que hoy es la excepción.
+python3 -c 'import json,sys; print("\n".join(
+    f if isinstance(f, str) else f["src"]
+    for f in json.load(open(sys.argv[1]))["fotos"]))' "$DATOS" \
+  | while IFS= read -r rel; do
+      foto="$RAIZ/remotion/public/$rel"
+      [ -f "$foto" ] || continue
+      corto="$(identify -format '%[fx:min(w,h)]' "$foto[0]" 2>/dev/null || echo 1440)"
+      [ "$corto" -lt 1440 ] 2>/dev/null || continue
+      convert "$foto" -filter Lanczos -resize '1440x1440^' \
+              -unsharp 0x0.75+0.75+0.008 -quality 96 "$foto"
+      echo "  ↑ $rel  ${corto}px → 1440px de lado corto"
+    done
+
 echo
 echo "── Renderizando $SLIDES slides ───────────────────────────────"
 cd remotion

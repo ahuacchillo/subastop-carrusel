@@ -671,6 +671,8 @@ button.go.armed,
              aria-label="Auction code or link" enterkeyhint="go">
       <button type="submit" id="fetch">Fetch</button>
       <button type="button" class="ghost" id="noCode">No code</button>
+      <button type="button" class="ghost" id="browse"
+              title="Las subastas abiertas, de la API">Browse</button>
     </form>
 
     <p class="status" id="status" role="status" aria-live="polite"></p>
@@ -1502,10 +1504,27 @@ $("publishLater").onclick = () => {
   send(t);
 };
 
-// ── reopening a finished carousel ───────────────────────────────────────────
+// Un enlace disfrazado de boton: `.ghost` esta escrito para <button>, y
+// duplicar el estilo para un <a> seria una tercera copia de lo mismo.
+$("browse").onclick = () => { location.href = "/"; };
+
+// ── reopening a finished carousel, or arriving from the list ────────────────
 (async () => {
   const j = await (await fetch("/inicio")).json();
-  if (!j.slug) { paintGallery(); paint(); review(); return; }
+  if (!j.slug) {
+    // La lista de ofertas enlaza aqui con ?oferta=<codigo>. Se limpia la URL
+    // antes de buscar —recargar no puede volver a disparar la descarga— pero
+    // se queda en /estudio: recargar tiene que dejarte donde estabas, y "/"
+    // es la lista.
+    const elegida = new URLSearchParams(location.search).get("oferta");
+    if (/^\d+$/.test(elegida || "")) {
+      $("code").value = elegida;
+      history.replaceState(null, "", "/estudio");
+      $("lookup").requestSubmit();          // el propio manejador pinta
+      return;
+    }
+    paintGallery(); paint(); review(); return;
+  }
   S.code = j.codigo; S.photos = j.fotos;
   S.picked = j.elegidas; S.crops = j.ajustes; S.slug = j.slug;
   fill(j.datos);

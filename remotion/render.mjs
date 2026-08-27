@@ -44,16 +44,24 @@ const serveUrl = await bundle({
 const browser = await openBrowser("chrome");
 const etiqueta = path.basename(path.resolve(destino));
 
+// `selectComposition` una sola vez, y no una por slide: medido en esta maquina
+// cuesta ~1.1 s cada llamada, que en un carrusel de tres eran 3.4 s de los 7.7 s
+// del render entero. Lo que hacia falta era resolver la composicion una vez y
+// cambiarle `props` por slide: los props que llegan al componente son los de
+// `composition.props`, y pasar solo `inputProps` a `renderStill` renderizaba el
+// slide 0 tres veces —`2.png` salia copia byte a byte de `1.png`—, que es lo que
+// habia hecho poner `selectComposition` dentro del bucle.
+const base = await selectComposition({
+  serveUrl,
+  id: "Auto",
+  inputProps: { s: datos, indice: 0 },
+});
+
 for (let i = 0; i < datos.fotos.length; i++) {
   const inputProps = { s: datos, indice: i };
-  // `selectComposition` runs once per slide on purpose. Hoisting it out of the
-  // loop and passing `inputProps` to `renderStill` alone renders slide 0 three
-  // times: the props that reach the component are the ones resolved here, and
-  // `2.png` came out a byte-for-byte copy of `1.png`. It costs ~0.3 s a slide.
-  const composition = await selectComposition({ serveUrl, id: "Auto", inputProps });
   const salida = path.join(destino, `${i + 1}.png`);
   await renderStill({
-    composition,
+    composition: { ...base, props: { ...base.props, ...inputProps } },
     serveUrl,
     inputProps,
     puppeteerInstance: browser,

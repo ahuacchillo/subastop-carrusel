@@ -1,10 +1,17 @@
 # Estudio VMC Subastas — la misma herramienta, dentro de un contenedor.
 #
-# NO ESTÁ EN USO. El estudio corre en local y así se queda; esto es la salida
-# de emergencia para el día que se decida exponerlo. Construido y probado: el
-# render completo sale en 13 s aquí dentro, con un pico de 704 MiB — que es
-# justo el número que descarta los planes gratuitos de 512 MB. El porqué de
-# todo esto está en el README.
+# EN USO: es la imagen que `desplegar.sh` publica en Cloud Run. Construido y
+# probado: el render completo sale en 13 s aquí dentro, con un pico de 704 MiB —
+# justo el número que descarta los planes gratuitos de 512 MB. El porqué de todo
+# esto está en el README.
+#
+# Lo que aquí dentro NO hay: el CLI de `claude`. El caption cae a DeepSeek por
+# API (`generar_copy` tiene los dos caminos), y `elegir.mirar()` degrada a orden
+# de galería con el recorte centrado. Esa degradación hay que probarla en la nube
+# y no razonarla: `subprocess.run` LANZA con un ejecutable inexistente en vez de
+# devolver un returncode, y el lote respondía "No such file or directory:
+# 'claude'" en cada tarjeta hasta que se capturó. El lote con modelo es, por
+# ahora, de escritorio.
 #
 # Nada del código cambia aquí: `estudio.py` toma host, puerto y clave del
 # entorno y el resto corre igual que en el escritorio. Lo que resuelve esta
@@ -20,8 +27,13 @@ FROM node:20-bookworm-slim
 
 # Las librerías de sistema que Chromium necesita para arrancar headless. Sin
 # ellas el navegador falla al abrir y el render muere sin decir por qué.
+#
+# `imagemagick` no es opcional: `ajustar.sh` llama a `identify` y `convert` para
+# ampliar la foto antes de renderizar. Sin el paquete, el render en el
+# contenedor muere en el primer slide.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 \
+      imagemagick \
       ca-certificates fonts-liberation \
       libnss3 libnspr4 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 \
       libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 \
