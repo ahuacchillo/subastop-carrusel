@@ -16,6 +16,7 @@ formato.
 
 El bucket se crea una vez con ./bucket-crear.sh.
 """
+import base64
 import json
 import os
 import subprocess
@@ -62,15 +63,23 @@ def publica(nombre):
 def jpeg(ruta):
     """El PNG del render, como JPEG, sin escribir nada en disco.
 
-    ffmpeg y no una libreria de imagenes: ya esta instalado (lo usa el pipeline
-    de los reels) y esto es una sola llamada. -q:v 2 es calidad alta; Instagram
-    recomprime de todos modos, asi que apretar mas solo pierde el original.
+    `convert` de imagemagick y no ffmpeg: los dos hacen esto en una llamada,
+    pero imagemagick ya esta en el contenedor —lo usa `ajustar.sh` para ampliar
+    la foto antes de renderizar— y ffmpeg no. Ffmpeg estaba aca porque en el
+    escritorio lo trae el pipeline de los reels; en la nube publicar moria con
+    "[Errno 2] No such file or directory: 'ffmpeg'", y meter 200 MB de codecs
+    en la imagen para pasar un PNG a JPEG no se paga.
+
+    -alpha remove sobre blanco porque JPEG no tiene canal alfa y sin eso el
+    transparente sale negro. -quality 92 es calidad alta; Instagram recomprime
+    de todos modos, asi que apretar mas solo pierde el original.
     """
-    r = subprocess.run(["ffmpeg", "-v", "error", "-i", ruta, "-q:v", "2",
-                        "-f", "mjpeg", "pipe:1"], capture_output=True)
+    r = subprocess.run(["convert", ruta, "-background", "white",
+                        "-alpha", "remove", "-alpha", "off",
+                        "-quality", "92", "jpg:-"], capture_output=True)
     if r.returncode != 0 or not r.stdout:
-        raise RuntimeError(f"ffmpeg no convirtio {os.path.basename(ruta)}: "
-                           f"{r.stderr.decode('utf8', 'replace')[-200:]}")
+        raise RuntimeError(f"convert no pudo pasar {os.path.basename(ruta)} a "
+                           f"JPEG: {r.stderr.decode('utf8', 'replace')[-200:]}")
     return r.stdout
 
 
@@ -139,6 +148,15 @@ def self_check():
     # Sube JPEG aunque lea PNG: Instagram no publica PNG.
     assert subidos == ["x/1.jpg", "x/10.jpg", "x/2.jpg"], subidos
     assert urls[0].endswith("/x/1.jpg"), urls
+
+    # Y la conversion de verdad, que es la que se cayo en la nube: un PNG
+    # minimo —uno solo, con alfa— y los bytes que salen tienen que ser JPEG.
+    png = os.path.join(d, "real.png")
+    open(png, "wb").write(base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+        "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="))
+    salida = jpeg(png)
+    assert salida[:3] == b"\xff\xd8\xff", "eso no es un JPEG"
     print("ok")
 
 

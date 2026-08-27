@@ -40,6 +40,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libxrandr2 libgbm1 libasound2 libpango-1.0-0 libcairo2 \
     && rm -rf /var/lib/apt/lists/*
 
+# Que la herramienta esté no alcanza: tiene que poder hacer lo que se le pide.
+# `bucket.py` pasaba el PNG a JPEG con ffmpeg, que en el escritorio lo trae el
+# pipeline de los reels y aquí nunca existió: publicar moría con
+# "[Errno 2] No such file or directory: 'ffmpeg'" y solo se vio en producción,
+# después de un deploy. Ahora usa `convert`, que ya estaba — y esto lo comprueba
+# al construir, escribiendo un JPEG de verdad. Si algún día el paquete de la
+# base deja de traer el códec, la imagen no se publica en vez de fallar en el
+# primer post.
+RUN convert -size 2x2 xc:red /tmp/prueba.jpg \
+    && identify -format '%m' /tmp/prueba.jpg | grep -qx JPEG \
+    && rm /tmp/prueba.jpg
+
 # Sin privilegios: la imagen de node ya trae el usuario `node` con UID 1000, que
 # es además el que esperan casi todos los alojamientos de contenedores. La app
 # escribe (fotos, renders) dentro de su propio directorio, así que el dueño de
