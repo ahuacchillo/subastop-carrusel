@@ -30,8 +30,8 @@
  .grupo.vivo .sello::before{animation:late 1.4s ease-in-out infinite}
  .grupo.vivo .sello{color:var(--orange);border-color:rgba(237,137,54,.42);
                     background:rgba(237,137,54,.12)}
- .grupo.negociable .sello{color:var(--cyan-2);border-color:rgba(0,174,177,.5);
-                          background:rgba(0,174,177,.16)}
+ .grupo.negociable .sello{color:var(--cyan-2);border-color:rgba(0,168,171,.5);
+                          background:rgba(0,168,171,.16)}
 
  /* ── La tarjeta ─────────────────────────────────────────────────────────
     La tarjeta entera es el control, pero el control tiene que verse: el
@@ -140,6 +140,14 @@
  .card[data-est="haciendo"]{border-color:var(--violet-2)}
  .card[data-est="listo"]{border-color:rgba(74,222,155,.45)}
  .card[data-est="error"]{border-color:rgba(248,113,113,.45)}
+
+ /* "aviso" es distinto a los otros tres: no viene de correr el lote, viene
+    de marcar la tarjeta -- todavia se puede correr igual, asi que el link a
+    Estudio (la salida real cuando la placa no tiene fotos) se queda visible
+    en vez de taparse como en haciendo/listo/error. */
+ .card[data-est="aviso"] .est{color:var(--orange);white-space:normal}
+ .card[data-est="aviso"]{border-color:rgba(237,137,54,.45)}
+ .card[data-est="aviso"] .abrir{opacity:1}
 
  .vacio{padding:26px;border:1px dashed var(--edge-2);border-radius:16px;
         color:var(--ink-2);max-width:62ch}
@@ -400,7 +408,8 @@
   .editor-frame.dragging{cursor:grabbing}
   .editor-frame img{width:100%;height:100%;object-fit:cover;pointer-events:none;display:block}
 
-  .editor-controles{width:100%;max-width:440px;display:flex;justify-content:center}
+  .editor-controles{width:100%;max-width:440px;display:flex;flex-direction:column;
+    gap:12px;align-items:center}
   .editor-zoom-box{display:flex;align-items:center;gap:10px;width:100%;
     padding:8px 14px;background:var(--raise);border:1px solid var(--edge);
     border-radius:12px}
@@ -409,6 +418,19 @@
   .editor-zoom-box output{font-variant-numeric:tabular-nums;font-size:12.5px;
     color:var(--ink);min-width:38px;font-weight:700}
   .editor-btn-sm{height:30px;padding:0 10px;font-size:11.5px;border-radius:8px}
+
+  /* La galeria cruda de la oferta (todo lo que bajo, no solo las 3 del
+     carrusel) para elegir otra foto sin salir del editor de encuadre. */
+  .editor-galeria{width:100%;display:flex;flex-direction:column;gap:8px}
+  .editor-galeria-tit{font-size:12px;font-weight:700;color:var(--ink-2);text-transform:uppercase}
+  .editor-galeria-tira{display:flex;gap:8px;overflow-x:auto;padding-block-end:2px}
+  .editor-galeria-tira button{flex:none;width:56px;height:56px;padding:0;
+    border-radius:9px;border:1.5px solid var(--edge-2);background:var(--raise);
+    overflow:hidden;cursor:pointer}
+  .editor-galeria-tira button:hover{border-color:var(--violet-2)}
+  .editor-galeria-tira button.activa{border-color:var(--violet-2);
+    box-shadow:inset 0 0 0 1.5px var(--violet-2)}
+  .editor-galeria-tira img{width:100%;height:100%;object-fit:cover;display:block}
 
   .editor-pie{display:flex;align-items:center;justify-content:flex-end;gap:10px;
     padding-top:10px;border-top:1px solid var(--edge);flex-wrap:wrap}

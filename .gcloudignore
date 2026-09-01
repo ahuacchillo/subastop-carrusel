@@ -11,6 +11,7 @@ __pycache__
 **/__pycache__
 Posts
 remotion/public/autos
+remotion/.webpack-cache
 .agents
 
 # The copy skill travels: the studio reads it as the system prompt.

@@ -18,6 +18,7 @@ From the terminal, to check the API is answering:
 """
 import json
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 BASE = "https://services.subastop.com/api/v3"
 
@@ -74,18 +75,25 @@ def _grupos(result, tipo):
     return salida
 
 
+def _grupo_o_nada(par):
+    scope, tipo = par
+    try:
+        return _grupos(_pedir("offer-type", scope), tipo)
+    except Exception:  # noqa: BLE001 - el otro scope sigue sirviendo
+        return []
+
+
 def ofertas():
-    """Todo lo abierto: primero lo que se subasta en vivo, luego lo negociable.
+    """Todo lo abierto: lo que se subasta en vivo y lo negociable.
 
     Un fallo de red en un scope no puede dejar la pagina vacia, asi que cada
-    uno se pide por separado y el que responda se muestra.
+    uno se pide por separado y el que responda se muestra. Los dos scopes no
+    dependen uno del otro, asi que se piden a la vez.
     """
-    salida = []
-    for scope, tipo in (("live", "vivo"), ("negotiable", "negociable")):
-        try:
-            salida += _grupos(_pedir("offer-type", scope), tipo)
-        except Exception:  # noqa: BLE001 - el otro scope sigue sirviendo
-            continue
+    with ThreadPoolExecutor(2) as pool:
+        salida = [g for grupos in pool.map(
+            _grupo_o_nada, (("live", "vivo"), ("negotiable", "negociable")))
+            for g in grupos]
     if not salida:
         raise LookupError("La API no devolvió ofertas. ¿Hay conexión?")
     return salida

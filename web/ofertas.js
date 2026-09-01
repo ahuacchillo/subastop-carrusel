@@ -36,8 +36,29 @@ function contar() {
   $('hacer').disabled = !n;
 }
 document.addEventListener('change', e => {
-  if (e.target.matches('.card input')) contar();
+  if (!e.target.matches('.card input')) return;
+  contar();
+  const card = e.target.closest('.card');
+  if (e.target.checked) revisarFotos(card);
+  else if (card.dataset.est === 'aviso') card.removeAttribute('data-est');
 });
+
+// Chequeo liviano al marcar: si la placa no tiene fotos en Drive todavia, la
+// tarjeta avisa antes de correr el lote entero. No bloquea nada -- el lote
+// se puede correr igual, esto solo ahorra sorpresas. Una vez por tarjeta
+// alcanza: el resultado no cambia mientras se decide que marcar.
+async function revisarFotos(card) {
+  if (card.dataset.revisado) return;
+  try {
+    const r = await fetch('/revisar-fotos', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codigo: card.dataset.id }),
+    });
+    const j = await r.json();
+    card.dataset.revisado = '1';
+    if (j.ok && j.encontrada === false) estado(card, 'aviso', j.motivo);
+  } catch { /* si el chequeo falla, el lote real lo va a decir igual */ }
+}
 
 $('limpiar').onclick = () => {
   document.querySelectorAll('.card input:checked').forEach(i => {
@@ -347,8 +368,21 @@ $('hacer').onclick = async () => {
       const i = siguiente++;
       const card = cards[i], el = bloques[i];
       el.dataset.fase = 'haciendo';
-      el.querySelector('.chip-txt').textContent = 'Haciendo el carrusel…';
       estado(card, 'haciendo', 'haciendo el carrusel…');
+      // '/lote' es un solo pedido que baja fotos, elige, renderiza y escribe
+      // el copy de un tiron -- casi un minuto detras de una sola etiqueta fija
+      // se lee como colgado. No hay progreso real que reportar a mitad de
+      // camino, asi que esto es un estimado del orden en que pasa, no un
+      // evento del servidor.
+      const FASES = ['Bajando fotos…', 'Eligiendo las mejores…',
+                     'Armando el carrusel…', 'Escribiendo el copy…'];
+      const chip = el.querySelector('.chip-txt');
+      chip.textContent = FASES[0];
+      let fase = 0;
+      const cicloFase = setInterval(() => {
+        fase = (fase + 1) % FASES.length;
+        chip.textContent = FASES[fase];
+      }, 4000);
       try {
         const r = await fetch('/lote', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -364,6 +398,8 @@ $('hacer').onclick = async () => {
         // negociable sin precio base, y las otras nueve no tienen la culpa.
         fallar(el, err.message);
         estado(card, 'error', err.message);
+      } finally {
+        clearInterval(cicloFase);
       }
       // Cuantas cerraron, no cual va: con dos en vuelo "3 de 10" no señala nada.
       cerradas++;
@@ -430,7 +466,8 @@ function abrirEditorFoto(el, idx) {
     src: typeof f === 'string' ? f : f.src,
     imgUrl,
     foco,
-    escala
+    escala,
+    origen: null  // set solo si se elige otra foto de la galeria
   };
 
   $('editorTitulo').textContent = `Ajustar Foto ${idx + 1} · ${el.querySelector('.obra-nom').textContent}`;
@@ -443,7 +480,47 @@ function abrirEditorFoto(el, idx) {
   $('editorGuardar').innerHTML = ico('check') + 'Guardar y re-renderizar';
 
   actualizarVistaEditor();
+  cargarGaleriaEditor(el.dataset.id);
   $('capaEditor').hidden = false;
+}
+
+// La galeria cruda de la oferta -- todo lo que se bajo, no solo las 3 que el
+// carrusel usa hoy -- para poder elegir otra sin salir del editor.
+async function cargarGaleriaEditor(codigo) {
+  const cont = $('editorGaleria'), tira = $('editorGaleriaTira');
+  cont.hidden = true;
+  tira.innerHTML = '';
+  try {
+    const r = await fetch('/galeria', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codigo }) });
+    const j = await r.json();
+    if (!j.ok || !j.fotos || j.fotos.length < 2) return;  // 0 o 1 foto: no hay entre que elegir
+    tira.innerHTML = j.fotos.map(f => `
+      <button type="button" data-archivo="${f.archivo}" title="Usar esta foto">
+        <img src="${f.url}" alt="" loading="lazy">
+      </button>`).join('');
+    tira.querySelectorAll('button').forEach(b => {
+      b.onclick = () => elegirOtraFoto(b.dataset.archivo);
+    });
+    cont.hidden = false;
+  } catch { /* sin galeria, el editor sigue sirviendo solo para encuadrar */ }
+}
+
+function elegirOtraFoto(archivo) {
+  if (!editorActivo) return;
+  const tira = $('editorGaleriaTira');
+  const img = tira.querySelector(`button[data-archivo="${CSS.escape(archivo)}"] img`);
+  if (!img) return;
+  editorActivo.origen = archivo;
+  editorActivo.imgUrl = img.src;
+  // Un recorte pensado para otra foto no tiene por que servir en esta: se
+  // reinicia y quien edita lo vuelve a ajustar si hace falta.
+  editorActivo.foco = '50% 50%';
+  editorActivo.escala = 1.0;
+  $('editorImg').src = img.src;
+  tira.querySelectorAll('button').forEach(b => b.classList.toggle('activa', b.dataset.archivo === archivo));
+  actualizarVistaEditor();
 }
 
 function cerrarEditor() {
@@ -562,20 +639,20 @@ document.addEventListener('keydown', e => {
 
 $('editorGuardar').onclick = async () => {
   if (!editorActivo) return;
-  const { el, idx, slug, foco, escala } = editorActivo;
+  const { el, idx, slug, foco, escala, origen } = editorActivo;
   const btn = $('editorGuardar');
   const msg = $('editorMsg');
-  
+
   btn.disabled = true;
   btn.innerHTML = '<i class="girito"></i>Guardando y renderizando…';
   msg.textContent = 'Renderizando slide con Remotion…';
   msg.className = 'editor-msg busy';
-  
+
   try {
     const r = await fetch('/reencuadrar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ slug, indice: idx, foco, escala })
+      body: JSON.stringify({ slug, indice: idx, foco, escala, origen: origen || undefined })
     });
     const j = await r.json();
     if (!j.ok) throw new Error(j.error || 'No se pudo actualizar');

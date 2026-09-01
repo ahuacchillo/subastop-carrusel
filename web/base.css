@@ -11,10 +11,14 @@
           Los dos gradientes son los canonicos del sistema —el mismo
           VYStrokes1 que `remotion/src/brand/vmc.ts` llama `gradient.borde`—
           y si cambian, cambian en los dos sitios. */
-       /* Cyan portado del catalogo de Concorde (teal-500/400 en Button.tsx):
-          esta pagina tenia #00A8AB/#00CACE, un par de puntos corridos del
-          valor canonico. */
-       --cyan:#00AEB1;--cyan-2:#00CCCC;--cyan-3:#009095;
+       /* #00A8AB/#00CACE YA eran el valor exacto de Concorde (cyan-700
+          default / cyan-600 hover en DESIGN.md, Downloads/DesignSystem). Se
+          habian "corregido" antes contra el registry online, que en ese
+          momento servia un valor viejo (#00AEB1/#00CCCC) bajo el mismo
+          nombre de token -- el propio catalogo tenia el drift, no esta
+          pagina. Revertido al comparar con la copia local, que es la fuente
+          de verdad. */
+       --cyan:#00A8AB;--cyan-2:#00CACE;
        /* violet-3 y orange-2: vault-600 y orange-700 de Concorde, el estado
           pressed del boton principal — no existian como token, estaban
           escritos sueltos donde hacia falta un violeta mas oscuro. */

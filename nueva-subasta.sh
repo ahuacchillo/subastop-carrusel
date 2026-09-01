@@ -114,11 +114,26 @@ echo
 echo "  El primero es la portada: es el único slide que lleva marca y modelo."
 # The carousel holds 3: any extra photos in the folder are ignored.
 TODAS="$(seq -s' ' 1 "$(( ${#DISPONIBLES[@]} < 3 ? ${#DISPONIBLES[@]} : 3 ))")"
+declare -A FOCO_POR_IDX=()
 ORDEN=""
 if [ -z "$EDITAR" ] && [ -n "$OFERTA" ] && [ -z "$FOTOS_PROPIAS" ]; then
-  # The site's photos already arrive in gallery order, so they are used as-is.
-  # Hand-picked ones are different: there the cover is a decision, so we ask.
-  ORDEN="$TODAS"
+  # El sitio ya entrega su galeria en orden de carrusel, pero Drive no: ahi las
+  # fotos vienen en el orden que sea, sin portada ni trasera-con-placa
+  # marcadas. elegir.py es lo mismo que ya usa el lote del estudio -- la IA
+  # mira y arma portada/interior/placa, con su foco. Con 3 fotos o menos no
+  # hay nada que mirar y devuelve la galeria tal cual, sin gastar un modelo.
+  while IFS=$'\t' read -r etiqueta foco; do
+    archivo="${etiqueta#*. }"
+    for i in "${!DISPONIBLES[@]}"; do
+      [ "$(basename "${DISPONIBLES[$i]}")" = "$archivo" ] || continue
+      ORDEN="$ORDEN $((i + 1))"
+      FOCO_POR_IDX[$((i + 1))]="$foco"
+    done
+  done < <(python3 "$RAIZ/elegir.py" "$ORIGEN" | grep -E '^[0-9]+\. ')
+  ORDEN="${ORDEN# }"
+  # Si elegir.py no devolvio nada parseable, ORDEN sigue vacio y el relleno de
+  # abajo (pensado para cuando a mano se tipea menos de 3) lo completa en
+  # orden de galeria -- el mismo aterrizaje de siempre, no uno nuevo.
 else
   while [ -z "$ORDEN" ]; do
     read -r -p "  Orden del carrusel (3 slides) [$TODAS]: " ORDEN
@@ -159,6 +174,7 @@ SLUG="$(printf '%s-%s-%s' "$OFERTA" "$MARCA" "$MODELO" \
 
 mkdir -p "$AUTOS" "$RAIZ/Posts/$SLUG"
 FOTOS=()
+FOCOS=()
 n=0
 for idx in $ORDEN; do
   origen="${DISPONIBLES[$((idx - 1))]}"
@@ -167,23 +183,33 @@ for idx in $ORDEN; do
   destino="$AUTOS/$SLUG-$n.${ext,,}"
   cp "$origen" "$destino"
   FOTOS+=("autos/$SLUG-$n.${ext,,}")
+  FOCOS+=("${FOCO_POR_IDX[$idx]:-50% 50%}")
 done
 
 # ── datos.json ───────────────────────────────────────────────────────────────
 # Built with python rather than a heredoc because the values carry apostrophes
 # (25') and accents, which break a heredoc silently. It sits next to the
 # renders, so the piece can be rebuilt identically a year from now.
+#
+# FOCOS va separado por "|" y no por espacio: cada foco es "50% 50%", dos
+# palabras, y un join por espacio no se podria partir de vuelta sin ambiguedad.
 MARCA="$MARCA" MODELO="$MODELO" ANIO="$ANIO" TRANSMISION="$TRANSMISION" \
 PRECIO="$PRECIO" FECHA="$FECHA" HORA="$HORA" TIENDA="$TIENDA" \
-FOTOS="${FOTOS[*]}" SALIDA="$RAIZ/Posts/$SLUG" \
+FOTOS="${FOTOS[*]}" FOCOS="$(IFS='|'; echo "${FOCOS[*]}")" SALIDA="$RAIZ/Posts/$SLUG" \
 python3 - <<'PY'
 import json, os
 e = os.environ
+fotos = e["FOTOS"].split()
+focos = e["FOCOS"].split("|")
+# Objeto solo cuando el foco no es el centrado por defecto -- mismo criterio
+# que ya usa estudio.py, asi el datos.json no cambia de forma sin necesidad.
+lista = [f if foco == "50% 50%" else {"src": f, "foco": foco}
+         for f, foco in zip(fotos, focos)]
 s = {
     "marca": e["MARCA"], "modelo": e["MODELO"], "anio": e["ANIO"],
     "transmision": e["TRANSMISION"], "precioBase": "US$ " + e["PRECIO"],
     "fecha": e["FECHA"], "hora": e["HORA"], "tienda": e["TIENDA"],
-    "fotos": e["FOTOS"].split(),
+    "fotos": lista,
 }
 with open(f"{e['SALIDA']}/datos.json", "w") as f:
     json.dump(s, f, ensure_ascii=False, indent=2)

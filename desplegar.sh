@@ -40,6 +40,18 @@ DS="$(llave "$HOME/deepseek-clave.txt")"
 IG="$(llave "$HOME/ig-token.txt")"
 [ -n "$IG" ] || echo "Aviso: sin ~/ig-token.txt, el botón Publicar queda muerto." >&2
 
+# Las credenciales de Drive no son un botón aparte: son la fuente de fotos por
+# defecto de cada oferta con placa (ver drive_fotos.py). ~/drive-clave.txt
+# tiene tres lineas -- client_id, client_secret, refresh_token -- las deja
+# drive_autorizar.py. Sin ellas el estudio sigue levantando, pero cualquier
+# oferta con placa se cae al pedir las fotos, no solo un boton.
+drive_linea() { sed -n "${2}p" "$1" 2>/dev/null | tr -d '\r\n'; }
+DRIVE_ID="$(drive_linea "$HOME/drive-clave.txt" 1)"
+DRIVE_SECRET="$(drive_linea "$HOME/drive-clave.txt" 2)"
+DRIVE_REFRESH="$(drive_linea "$HOME/drive-clave.txt" 3)"
+[ -n "$DRIVE_ID" ] && [ -n "$DRIVE_SECRET" ] && [ -n "$DRIVE_REFRESH" ] || \
+  echo "Aviso: ~/drive-clave.txt incompleto, las fotos por placa van a fallar." >&2
+
 # --memory 2Gi : el pico medido del render es 704 MiB; 1 GiB queda muy justo
 # --cpu 2      : el render es CPU pura, más CPU son menos segundos facturados
 # --concurrency 8 : dos renders a la vez caben en 2 GiB; el default de 80 no
@@ -63,5 +75,5 @@ exec "$GCLOUD" run deploy "$SERVICIO" \
   --min-instances 0 \
   --max-instances 1 \
   --allow-unauthenticated \
-  --set-env-vars "ESTUDIO_CLAVE=$CLAVE,DEEPSEEK_API_KEY=$DS,IG_TOKEN=$IG" \
+  --set-env-vars "ESTUDIO_CLAVE=$CLAVE,DEEPSEEK_API_KEY=$DS,IG_TOKEN=$IG,DRIVE_CLIENT_ID=$DRIVE_ID,DRIVE_CLIENT_SECRET=$DRIVE_SECRET,DRIVE_REFRESH_TOKEN=$DRIVE_REFRESH" \
   --quiet

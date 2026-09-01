@@ -41,6 +41,12 @@ RAIZ = os.path.dirname(os.path.abspath(__file__))
 EXTS = (".png", ".jpg", ".jpeg")
 CLAVES = ("frente", "interior_o_lado", "atras_con_placa")
 DEEPSEEK = os.environ.get("DEEPSEEK_API_KEY", "")
+# La galeria del sitio nunca pasaba de 8 (scraper.py la capaba ahi); Drive no
+# tiene tope y una carpeta de 20 fotos hace que DeepSeek responda 413 (payload
+# muy grande) -- y eso caia en silencio a orden de galeria, no a un error
+# visible. El tope va aca, no en la descarga: el estudio a mano si necesita
+# ver la carpeta entera para elegir.
+MAX_PARA_MIRAR = 8
 
 # The prompt is the same for both paths — only the delivery mechanism changes.
 # DeepSeek gets the images inline and returns JSON to stdout; Claude reads files
@@ -311,10 +317,14 @@ def mirar(carpeta, tiempo=300):
     if os.path.isfile(ruta):
         os.remove(ruta)
 
+    # Al modelo se le manda un tope; _validar sigue viendo la galeria entera
+    # para rellenar lo que falte, asi que una respuesta valida del subconjunto
+    # nunca queda invalidada por el tope.
+    vistas = archivos[:MAX_PARA_MIRAR]
     if DEEPSEEK:
-        seleccion = _mirar_deepseek(carpeta, archivos)
+        seleccion = _mirar_deepseek(carpeta, vistas)
     else:
-        seleccion = _mirar_claude(carpeta, archivos, tiempo)
+        seleccion = _mirar_claude(carpeta, vistas, tiempo)
 
     tres, focos = _validar(seleccion, archivos)
     return tres, seleccion.get("siniestrado") is True, focos

@@ -25,6 +25,7 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -35,10 +36,12 @@ import urllib.parse
 import urllib.request
 import webbrowser
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime
 
 import api
 import bucket
+import drive_fotos
 import elegir
 import publicar as publicar_mod
 import scraper
@@ -560,7 +563,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                       "/generar": self.generar, "/copy": self.copy,
                       "/generar-copy": self.generar_copy,
                       "/publicar": self.publicar,
-                      "/reencuadrar": self.reencuadrar}.get(self.path)
+                      "/reencuadrar": self.reencuadrar,
+                      "/galeria": self.galeria,
+                      "/revisar-fotos": self.revisar_fotos}.get(self.path)
             if not accion:
                 return self.responder(404, "text/plain", b"no existe")
             r = accion(cuerpo)
@@ -569,27 +574,71 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001 - whatever fails is shown on the page
             self.json({"ok": False, "error": str(e) or type(e).__name__})
 
+    def galeria(self, c):
+        """Todas las fotos crudas ya bajadas de una oferta -- no solo las tres
+        que el carrusel esta usando -- para elegir otra desde el editor."""
+        codigo = seguro(str(c.get("codigo", "")))
+        carpeta = os.path.join(MATERIALES, codigo)
+        return {"fotos": [{"archivo": f, "url": f"/foto/{codigo}/{f}"}
+                           for f in listar(carpeta)]}
+
+    def revisar_fotos(self, c):
+        """Chequeo liviano al marcar una oferta en la lista: si tiene placa,
+        hay carpeta con fotos en Drive para ella. No descarga nada -- es un
+        aviso antes de correr el lote, no el fetch real.
+
+        Sin placa no hay nada que avisar: scraper.bajar() cae al sitio solo,
+        sin tropezar. El aviso es solo para el caso que sí falla hoy: hay
+        placa pero el socio todavia no subio las fotos a Drive."""
+        codigo = seguro(str(c.get("codigo", "")))
+        datos, _ = scraper.leer(codigo)
+        placa = datos.get("PLACA", "")
+        if not placa:
+            return {"encontrada": True}
+        access = drive_fotos.token()
+        carpetas = drive_fotos.buscar_carpetas(access, placa)
+        fotos = drive_fotos._juntar(drive_fotos.fotos_de(access, c) for c in carpetas)
+        if not fotos:
+            return {"encontrada": False, "motivo": f"placa {placa} sin fotos en Drive todavía"}
+        return {"encontrada": True}
+
     def reencuadrar(self, c):
-        """Ajusta foco/escala de un slide de un carrusel existente y re-renderiza."""
+        """Ajusta foco/escala de un slide de un carrusel existente y
+        re-renderiza. Con `origen` (un archivo de Materiales/<codigo>/) ademas
+        cambia CUAL foto usa ese slide, no solo su encuadre."""
         slug = seguro(str(c.get("slug", "")))
         indice = int(c.get("indice", 0))
         foco = str(c.get("foco", "50% 50%"))
         escala = float(c.get("escala", 1.0))
-        
+        origen = seguro(str(c.get("origen", "")))
+
         datos_path = os.path.join(POSTS, slug, "datos.json")
         if not os.path.isfile(datos_path):
             raise ValueError(f"No existe datos.json para {slug}")
-        
+
         with open(datos_path, "r", encoding="utf8") as f:
             d = json.load(f)
-        
+
         fotos = d.get("fotos", [])
         if indice < 0 or indice >= len(fotos):
             raise ValueError(f"Índice de foto {indice} fuera de rango")
-        
+
         f_actual = fotos[indice]
         src = f_actual if isinstance(f_actual, str) else f_actual.get("src", "")
-        
+
+        if origen:
+            # El mismo prefijo/numero que ya usa nueva-subasta.sh, asi una
+            # segunda vuelta de reencuadrar no deja huerfanos en public/autos.
+            codigo = slug.split("-", 1)[0]
+            ruta_origen = os.path.join(MATERIALES, codigo, origen)
+            if not os.path.isfile(ruta_origen):
+                raise ValueError(f"No existe la foto {origen} en Materiales/{codigo}")
+            ext = os.path.splitext(origen)[1].lower() or ".jpeg"
+            nombre = f"{slug}-{indice + 1}{ext}"
+            os.makedirs(AUTOS, exist_ok=True)
+            shutil.copyfile(ruta_origen, os.path.join(AUTOS, nombre))
+            src = f"autos/{nombre}"
+
         if foco != "50% 50%" or escala != 1.0:
             fotos[indice] = {"src": src, "foco": foco, "escala": escala}
         else:
@@ -621,7 +670,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             raise ValueError("Eso no parece un código de oferta ni un link.")
         datos, urls = scraper.leer(codigo)
         carpeta = os.path.join(MATERIALES, codigo)
-        scraper.bajar(urls, carpeta)
+        scraper.bajar(urls, carpeta, datos.get("PLACA", ""))
         # Lo que el scraper no encontro y la pagina rellena con un valor por
         # defecto. En el estudio eso es comodidad —el campo se ve y se corrige—;
         # en el lote seria publicar "Mecánica" sobre una caja automatica.
@@ -660,14 +709,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # camioneta que en la foto estaba corrida a la izquierda. Lo mide quien
         # ya esta mirando las ocho fotos.
         tres, chocado, focos = elegir.mirar(carpeta)
-        hecho = self.generar({
-            "codigo": pedido["codigo"], "datos": pedido["datos"],
-            "fotos": [{"archivo": f, "carpeta": pedido["carpeta"],
-                       "foco": foco, "escala": 1}
-                      for f, foco in zip(tres, focos)]})
-        # El caption despues del render: se escribe desde el datos.json que
-        # acaba de dejar `generar`, que es la unica fuente de esos ocho datos.
-        self.generar_copy({"slug": hecho["slug"], "siniestrado": chocado})
+        # El slug es el mismo calculo que hace generar() por dentro: conocerlo
+        # antes deja pedir el copy sin esperar a que generar() termine de
+        # devolver algo.
+        slug = slugificar(pedido["codigo"], pedido["datos"]["marca"],
+                          pedido["datos"]["modelo"])
+        peticion = {"codigo": pedido["codigo"], "datos": pedido["datos"],
+                    "fotos": [{"archivo": f, "carpeta": pedido["carpeta"],
+                               "foco": foco, "escala": 1}
+                              for f, foco in zip(tres, focos)]}
+        # El copy no necesita el render: generar() escribe datos.json antes de
+        # llamar a Remotion, y generar_copy() no lee otra cosa. En fila eran
+        # ~13s de render + ~3-4s de copy; a la vez, el mayor de los dos.
+        with ThreadPoolExecutor(2) as pool:
+            fut_render = pool.submit(self.generar, peticion)
+            fut_copy = pool.submit(self.generar_copy,
+                                    {"slug": slug, "siniestrado": chocado})
+            hecho = fut_render.result()
+            fut_copy.result()
         # El modal necesita los slides y el copy para mostrarlos en la misma
         # pantalla: sin ellos habria que abrir cada carrusel en el estudio.
         copy_path = os.path.join(POSTS, hecho["slug"], "copy.md")
@@ -794,6 +853,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         the skill actually asks to be written."""
         slug = seguro(c.get("slug", ""))
         ruta = os.path.join(POSTS, slug, "datos.json")
+        # En el lote esto corre en paralelo con el render, no despues: generar()
+        # escribe datos.json antes de arrancar Remotion, asi que la espera real
+        # es de milisegundos salvo que el render haya fallado sin llegar a
+        # escribirlo -- ahi el timeout entrega el mismo error de siempre.
+        for _ in range(30):
+            if os.path.isfile(ruta):
+                break
+            time.sleep(0.1)
         if not os.path.isfile(ruta):
             raise ValueError("Ese carrusel no existe todavía.")
         with open(ruta, encoding="utf8") as f:
