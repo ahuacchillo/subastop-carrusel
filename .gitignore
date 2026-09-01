@@ -1,0 +1,21 @@
+node_modules/
+__pycache__/
+*.pyc
+.env
+.DS_Store
+
+# ── Efímero, se regenera ───────────────────────────────────────────
+# Fotos de cada subasta y sus renders. Salen del scraper o de las fotos que pase
+# el vendedor, y el carrusel se rearma con `./nueva-subasta.sh`. Son
+# ~150 MB que no aportan nada al repo porque nadie los vuelve a mirar.
+Materiales/*/
+Posts/
+remotion/public/autos/
+
+# Cache de webpack entre renders: 5.8s -> 1.3s en la segunda oferta. Vive en
+# disco, no aporta nada al repo -- se reconstruye sola con el primer render.
+remotion/.webpack-cache/
+
+# La cola de publicación: estado local de esta máquina, con los captions ya
+# escritos. Se regenera publicando; en el repo solo generaría conflictos.
+agenda.json

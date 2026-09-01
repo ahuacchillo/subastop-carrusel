@@ -3,9 +3,9 @@
 Generador de piezas para @vmcsubastas: le das el código de una oferta de
 vmcsubastas.com y te devuelve los 4 PNG del carrusel listos para publicar.
 
-Todo lo de este documento se corre desde `carrusel/`, y todas sus rutas son
-relativas a esta carpeta. El otro producto del repo —los reels verticales de
-marca— vive en `../reels/` y tiene su propio pipeline: [`../reels/REELS.md`](../reels/REELS.md).
+Todo lo de este documento se corre desde la raíz de este repositorio, y todas sus rutas son
+relativas a esta carpeta. El proyecto de reels verticales de marca vive en su propio
+repositorio: [subastop-reels](https://github.com/ahuacchillo/subastop-reels).
 
 ## Las ofertas — la pantalla de entrada
 
