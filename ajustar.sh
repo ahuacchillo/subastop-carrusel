@@ -37,7 +37,12 @@ fi
 # `remotion/render.mjs` hace el trabajo: un bundle y un navegador para todo el
 # carrusel. Por el CLI era uno de cada cosa por slide — medido en esta máquina,
 # 9.9 s contra 5.4 s, y los PNG salen byte-idénticos.
-SLIDES="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["fotos"]))' "$DATOS")"
+# El carrusel de gancho antepone un slide de intriga a las fotos de siempre:
+# una más que el clásico, no un número fijo.
+SLIDES="$(python3 -c 'import json,sys
+d = json.load(open(sys.argv[1]))
+n = len(d["fotos"])
+print(n + 1 if d.get("formato") == "gancho" else n)' "$DATOS")"
 
 # ── Agrandar las fotos antes de renderizar ───────────────────────────────────
 # El CDN de vmcsubastas solo publica 800x600 y el slide es 1080x1080: con
@@ -65,6 +70,12 @@ python3 -c 'import json,sys; print("\n".join(
               -unsharp 0x0.75+0.75+0.008 -quality 96 "$foto"
       echo "  ↑ $rel  ${corto}px → 1440px de lado corto"
     done
+
+# Limpia los PNG numerados de una tanda anterior antes de renderizar. Sin esto,
+# regenerar la misma subasta con menos slides que la vez pasada (ej. de
+# clásico a gancho, de 4 fotos a 2) deja huérfano el cierre viejo con un
+# número más alto — y el carrusel sale con la placa de cierre repetida.
+find "$RAIZ/Posts/$SLUG" -maxdepth 1 -regex '.*/[0-9]+\.png' -delete
 
 echo
 echo "── Renderizando $SLIDES slides ───────────────────────────────"

@@ -24,6 +24,7 @@ import io
 import json
 import mimetypes
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -205,6 +206,70 @@ def deepseek(sistema, mensaje):
     return texto
 
 
+def generar_gancho(d):
+    """One curiosity-hook line for the "Carrusel de gancho" format: the blurred
+    cover asks a question, and the reveal's CTA ("Comenta MODELO para más
+    info") only makes sense if the hook never named the car.
+
+    Synchronous and inside `generar()` on purpose: `render.mjs` needs the line
+    already in `datos.json` before it renders slide 1, so this cannot ride the
+    same async lane as `generar_copy()`.
+
+    ponytail: sin API key no hay llamada bloqueante — cae a una línea genérica
+    fija en vez de invocar la CLI de Claude en el camino síncrono del render.
+    """
+    if not DEEPSEEK:
+        return "¿Reconoces qué auto se esconde aquí?"
+    estado = "siniestrada" if d.get("siniestrado") else "en buen estado"
+    buenos = ganchos_buenos()
+    # Ejemplos, no plantilla: el prompt dice explícitamente que no se copien,
+    # porque un modelo con "aquí hay ejemplos" en el contexto tiende a
+    # parafrasear el más reciente en vez de inventar uno nuevo.
+    referencia = ""
+    if buenos:
+        lista = "\n".join(f"- {g}" for g in buenos[-15:])
+        referencia = (
+            "\n\nEstos ganchos ya funcionaron bien en subastas anteriores -- "
+            "úsalos solo para entender el tono y la fórmula que enganchan. "
+            "NO copies ninguno ni parafrasees el más parecido: el de hoy "
+            f"tiene que ser otro, distinto de todos estos:\n{lista}"
+        )
+    # Elegido acá y no pedido "al azar" en el prompt: dejarle la moneda al
+    # modelo no alterna, sobrecorrige -- pedidas las dos fórmulas a la vez,
+    # las seis pruebas de esta sesión salieron todas frase, ninguna pregunta.
+    formato = random.choice(["pregunta", "frase"])
+    if formato == "pregunta":
+        # Varios ejemplos y no uno solo: con uno solo el modelo lo copiaba
+        # casi textual en vez de inventar el suyo.
+        instruccion = (
+            "Escribe una PREGUNTA directa que rete a adivinar ESE auto -- "
+            "ejemplos de tono, no para copiar: '¿Reconoces qué auto se "
+            "esconde aquí?', '¿Adivinas cuánto vale esta joya?', '¿Qué "
+            "clásico hay detrás del blur?'. La tuya tiene que ser otra, "
+            "original.")
+    else:
+        instruccion = (
+            "Escribe una FRASE declarativa de intriga, no una pregunta -- "
+            "ejemplos de tono, no para copiar: 'Tu próximo auto está a un "
+            "swipe de distancia', 'Esta joya no dura mucho en subasta', 'Lo "
+            "que ves hoy no es lo que te llevas'. La tuya tiene que ser otra, "
+            "original.")
+    texto = deepseek(
+        "Escribes el texto de una sola diapositiva de intriga para un "
+        "carrusel de Instagram de autos en subasta. Detrás de este texto hay "
+        "UNA foto real del auto, desenfocada -- el gancho tiene que sonar "
+        "como una invitación concreta a adivinar QUÉ auto es. Prohibido "
+        "sonar abstracto o inspiracional sin relación con adivinar el auto "
+        "('una historia que nadie cuenta', 'pasiones ocultas', 'detrás de "
+        "cada número' y cosas por el estilo quedan afuera: no dicen nada "
+        f"sobre adivinar nada). {instruccion} Máximo 12 palabras, en español "
+        "neutro. Sin comillas, sin emoji, sin markdown, sin punto final. "
+        "NUNCA menciones la marca, el modelo, el año ni el precio." +
+        referencia,
+        f"Auto {estado}. Responde solo con la frase.")
+    return texto.strip().strip('"').strip("'")
+
+
 def seguro(nombre):
     """A file name with no path in it. Nothing arriving from the browser gets
     to choose which folder is written to."""
@@ -216,6 +281,53 @@ def slugificar(*partes):
     crudo = "-".join(str(p) for p in partes)
     plano = unicodedata.normalize("NFKD", crudo).encode("ascii", "ignore").decode()
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]", "-", plano.lower())).strip("-")
+
+
+LOGOS = os.path.join(MATERIALES, "logos")
+VENDEDORES = os.path.join(RAIZ, "remotion", "public", "vendedores")
+GANCHOS_BUENOS = os.path.join(MATERIALES, "ganchos-buenos.json")
+
+
+def ganchos_buenos():
+    """La lista curada a mano, `Materiales/ganchos-buenos.json` -- un archivo
+    plano en la raíz de Materiales/ como `logo.svg`, no una subcarpeta: así
+    queda trackeado en git (`Materiales/*/` sí se ignora) y sobrevive entre
+    máquinas."""
+    if not os.path.isfile(GANCHOS_BUENOS):
+        return []
+    with open(GANCHOS_BUENOS, encoding="utf8") as f:
+        return json.load(f)
+
+
+def logo_de(tienda):
+    """The seller's real logo, if someone dropped one in `Materiales/logos/`
+    named after the store — `slugificar("Maquisistema")` is `maquisistema`,
+    so `maquisistema.svg` or `maquisistema.png` there is all it takes.
+
+    The match is by whole word, not exact string: the API's `tienda` carries
+    extras a file name never will ("MAF Perú", "Pandero S.A.C."), so `maf.svg`
+    has to match "maf-peru" too. Padding both slugs with dashes and checking
+    one contains the other keeps that loose without matching part of a word
+    ("auto" would otherwise catch "autoplan").
+
+    No logo on file is the common case, not an error: the header falls back
+    to the initial in a circle. Copies into `remotion/public/vendedores/` on
+    the way out because that is what `staticFile()` can actually serve —
+    same reason photos land in `public/autos/` before a render."""
+    slug = slugificar(tienda)
+    if not slug or not os.path.isdir(LOGOS):
+        return None
+    para_buscar = f"-{slug}-"
+    for nombre in os.listdir(LOGOS):
+        base, ext = os.path.splitext(nombre)
+        archivo_slug = slugificar(base)
+        if f"-{archivo_slug}-" in para_buscar and ext.lower() in (".svg", ".png"):
+            os.makedirs(VENDEDORES, exist_ok=True)
+            destino = f"{slug}{ext.lower()}"
+            shutil.copyfile(os.path.join(LOGOS, nombre),
+                             os.path.join(VENDEDORES, destino))
+            return f"vendedores/{destino}"
+    return None
 
 
 def listar(carpeta):
@@ -564,6 +676,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                       "/generar-copy": self.generar_copy,
                       "/publicar": self.publicar,
                       "/reencuadrar": self.reencuadrar,
+                      "/regenerar-gancho": self.regenerar_gancho,
+                      "/gancho-bueno": self.gancho_bueno,
                       "/galeria": self.galeria,
                       "/revisar-fotos": self.revisar_fotos}.get(self.path)
             if not accion:
@@ -601,6 +715,57 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not fotos:
             return {"encontrada": False, "motivo": f"placa {placa} sin fotos en Drive todavía"}
         return {"encontrada": True}
+
+    def gancho_bueno(self, c):
+        """Guarda el gancho actual de un carrusel en la lista de referencia
+        (`Materiales/ganchos-buenos.json`), la que lee `generar_gancho()`
+        para orientar -sin copiar- las próximas preguntas."""
+        slug = seguro(str(c.get("slug", "")))
+        datos_path = os.path.join(POSTS, slug, "datos.json")
+        if not os.path.isfile(datos_path):
+            raise ValueError(f"No existe datos.json para {slug}")
+        with open(datos_path, encoding="utf8") as f:
+            gancho = json.load(f).get("gancho", "").strip()
+        if not gancho:
+            raise ValueError("Este carrusel no tiene gancho que guardar.")
+
+        buenos = ganchos_buenos()
+        if gancho not in buenos:
+            buenos.append(gancho)
+            os.makedirs(MATERIALES, exist_ok=True)
+            with open(GANCHOS_BUENOS, "w", encoding="utf8") as f:
+                json.dump(buenos, f, ensure_ascii=False, indent=2)
+        return {"total": len(buenos)}
+
+    def regenerar_gancho(self, c):
+        """Una pregunta de gancho nueva para un carrusel ya armado, sin
+        rehacer las fotos: escribe `datos.json` y llama a `render.mjs` con el
+        índice 0 nada más, así el resto de los PNG no se toca."""
+        slug = seguro(str(c.get("slug", "")))
+        datos_path = os.path.join(POSTS, slug, "datos.json")
+        if not os.path.isfile(datos_path):
+            raise ValueError(f"No existe datos.json para {slug}")
+
+        with open(datos_path, encoding="utf8") as f:
+            d = json.load(f)
+        if d.get("formato") != "gancho":
+            raise ValueError("Este carrusel no tiene slide de gancho.")
+
+        d["gancho"] = generar_gancho(d)
+        with open(datos_path, "w", encoding="utf8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=2)
+
+        r = subprocess.run(
+            ["node", "render.mjs", datos_path, os.path.join(POSTS, slug), "0"],
+            cwd=os.path.join(RAIZ, "remotion"), capture_output=True, text=True)
+        if r.returncode != 0:
+            raise RuntimeError((r.stderr or r.stdout).strip()[-300:])
+
+        pngs = sorted(f for f in os.listdir(os.path.join(POSTS, slug))
+                      if f.endswith(".png"))
+        v = int(time.time())
+        return {"slug": slug, "slides": [f"/post/{slug}/{p}?v={v}" for p in pngs],
+                "gancho": d["gancho"]}
 
     def reencuadrar(self, c):
         """Ajusta foco/escala de un slide de un carrusel existente y
@@ -816,13 +981,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
             else:
                 salida.append(entrada["src"])
 
+        # El gancho ya no le quita nada al carrusel clásico -- es el mismo
+        # carrusel con un slide de intriga antepuesto -- así que dejó de ser
+        # una eleccion: todo carrusel nuevo lo lleva.
+        datos = {
+            "marca": d["marca"], "modelo": d["modelo"], "anio": d["anio"],
+            "transmision": d["transmision"], "precioBase": "US$ " + d["precio"],
+            "fecha": d["fecha"], "hora": d["hora"], "tienda": d["tienda"],
+            "fotos": salida, "formato": "gancho",
+        }
+        logo = logo_de(d["tienda"])
+        if logo:
+            datos["logo"] = logo
+        # Síncrono a propósito: render.mjs lee `gancho` de datos.json, así que
+        # tiene que existir antes de llamar a ajustar.sh --render.
+        datos["gancho"] = generar_gancho(d)
+
         with open(os.path.join(POSTS, slug, "datos.json"), "w", encoding="utf8") as f:
-            json.dump({
-                "marca": d["marca"], "modelo": d["modelo"], "anio": d["anio"],
-                "transmision": d["transmision"], "precioBase": "US$ " + d["precio"],
-                "fecha": d["fecha"], "hora": d["hora"], "tienda": d["tienda"],
-                "fotos": salida,
-            }, f, ensure_ascii=False, indent=2)
+            json.dump(datos, f, ensure_ascii=False, indent=2)
 
         r = subprocess.run([os.path.join(RAIZ, "ajustar.sh"), slug, "--render"],
                            capture_output=True, text=True)

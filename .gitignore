@@ -9,6 +9,11 @@ __pycache__/
 # el vendedor, y el carrusel se rearma con `./nueva-subasta.sh`. Son
 # ~150 MB que no aportan nada al repo porque nadie los vuelve a mirar.
 Materiales/*/
+# Excepción: logos de vendedores. Son marca fija, no fotos de una subasta —
+# igual que logo.svg suelto en la raíz de Materiales/, pero en carpeta propia
+# porque estos sí van a ser varios.
+!Materiales/logos/
+!Materiales/logos/*
 Posts/
 remotion/public/autos/
 

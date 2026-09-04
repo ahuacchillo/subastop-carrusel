@@ -50,13 +50,13 @@ const BordeGlass: React.FC<{ radio: number | string }> = ({ radio }) => (
 );
 
 /** The arrows' chevron, cropped from the exported SVG (node 7340:30566). */
-const Flecha: React.FC<{ hacia: "izq" | "der" }> = ({ hacia }) => (
+export const Flecha: React.FC<{ hacia: "izq" | "der"; top?: number }> = ({ hacia, top = 515.22 }) => (
   <div
     style={{
       position: "absolute",
       // The right one at x 942.42; the left is its mirror against the frame.
       left: hacia === "der" ? 942.42 : 1080 - 942.42 - 92.386,
-      top: 515.22,
+      top,
       width: 92.386,
       height: 92.386,
       borderRadius: "50%",
@@ -109,70 +109,108 @@ const IconoPrecio: React.FC = () => (
   </svg>
 );
 
-const Header: React.FC<{ tienda: string }> = ({ tienda }) => (
-  <div
-    style={{
-      position: "absolute",
-      left: 44.875,
-      top: 49.02,
-      width: 372,
-      // ponytail: alto minimo, no alto fijo. El spec dice 104 y con un nombre
-      // de una linea eso es lo que mide. "Pandero Seminuevos" no cabe en 257px
-      // a 28px, envuelve a dos lineas, y con `height: 104` la segunda salia
-      // colgando por debajo del vidrio. Crece el panel, no se recorta el
-      // nombre: el vendedor es la mitad de la credibilidad del post.
-      minHeight: 104,
-      borderRadius: 13.955,
-      display: "flex",
-      alignItems: "center",
-      gap: 14,
-      padding: "14px 16.5px",
-      boxSizing: "border-box",
-      ...glassLigero,
-    }}
-  >
-    <BordeGlass radio={13.955} />
-    <div
-      style={{
-        width: 67.307,
-        height: 67.307,
-        borderRadius: "50%",
-        background: gradient.avatar,
-        flexShrink: 0,
+export const Header: React.FC<{
+  tienda: string;
+  logo?: string;
+  /** Sin `position:absolute` propio: para cuando un padre flex ya decide
+      dónde va (el gancho lo agrupa con la pregunta, centrado). */
+  enFlujo?: boolean;
+  /** Alto del logo real. El resto de la insignia (padding) escala con la
+      misma proporción que el tamaño de siempre (64px de logo, 20/38 de
+      padding), así un logo más grande no queda con el aire de antes. */
+  logoAltura?: number;
+}> = ({ tienda, logo, enFlujo, logoAltura = 64 }) => {
+  const pillStyle: React.CSSProperties = logo
+    ? {
+        width: "fit-content",
+        borderRadius: 13.955,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontFamily: avatarFont,
-        fontWeight: 700,
-        // The spec says 65.44px, but that is the text layer's height, not the
-        // body size: at 65 the letter bursts the circle. 42 is what you see.
-        fontSize: 42,
-        letterSpacing: "0.5235px",
-        color: color.white,
-        lineHeight: 1,
-        paddingBottom: 3,
-      }}
-    >
-      {tienda.charAt(0).toUpperCase()}
-    </div>
-    <div
-      style={{
-        fontFamily: sans,
-        color: color.white,
-        textShadow: shadow.textHeader,
-        lineHeight: 1.2,
-        minWidth: 0,
-      }}
-    >
-      <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "0.2px" }}>
-        Tienda oficial
+        padding: `${Math.round(logoAltura * 0.3125)}px ${Math.round(logoAltura * 0.594)}px`,
+        boxSizing: "border-box",
+        ...glassLigero,
+      }
+    : {
+        width: 372,
+        // ponytail: alto minimo, no alto fijo. El spec dice 104 y con un nombre
+        // de una linea eso es lo que mide. "Pandero Seminuevos" no cabe en 257px
+        // a 28px, envuelve a dos lineas, y con `height: 104` la segunda salia
+        // colgando por debajo del vidrio. Crece el panel, no se recorta el
+        // nombre: el vendedor es la mitad de la credibilidad del post.
+        minHeight: 104,
+        borderRadius: 13.955,
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        padding: "14px 16.5px",
+        boxSizing: "border-box",
+        ...glassLigero,
+      };
+
+  const contenido = logo ? (
+    <>
+      <BordeGlass radio={13.955} />
+      {/* `maxWidth: "none"` porque el reset de Tailwind le pone
+          `max-width:100%` a todo <img>, y eso choca con el `width:auto`
+          dentro de un contenedor `fit-content` — el logo salía angostado. */}
+      <Img src={staticFile(logo)} style={{ height: logoAltura, width: "auto", maxWidth: "none" }} />
+    </>
+  ) : (
+    <>
+      <BordeGlass radio={13.955} />
+      <div
+        style={{
+          width: 67.307,
+          height: 67.307,
+          borderRadius: "50%",
+          background: gradient.avatar,
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: avatarFont,
+          fontWeight: 700,
+          // The spec says 65.44px, but that is the text layer's height, not the
+          // body size: at 65 the letter bursts the circle. 42 is what you see.
+          fontSize: 42,
+          letterSpacing: "0.5235px",
+          color: color.white,
+          lineHeight: 1,
+          paddingBottom: 3,
+        }}
+      >
+        {tienda.charAt(0).toUpperCase()}
       </div>
-      <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "0.224px" }}>
-        {tienda}
+      <div
+        style={{
+          fontFamily: sans,
+          color: color.white,
+          textShadow: shadow.textHeader,
+          lineHeight: 1.2,
+          minWidth: 0,
+        }}
+      >
+        <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: "0.2px" }}>
+          Tienda oficial
+        </div>
+        <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "0.224px" }}>
+          {tienda}
+        </div>
       </div>
-    </div>
-  </div>
-);
+    </>
+  );
+
+  return (
+    enFlujo ? (
+      <div style={{ position: "relative", ...pillStyle }}>{contenido}</div>
+    ) : (
+      <div style={{ position: "absolute", left: 44.875, top: 49.02, ...pillStyle }}>
+        {contenido}
+      </div>
+    )
+  );
+};
 
 /**
  * Make + model, anchored right at x 1009.56.
@@ -351,7 +389,7 @@ export const AutoSlide: React.FC<{
             ? {}
             : { transform: `scale(${escala})`, transformOrigin: foco }),
         }} />
-      <Header tienda={s.tienda} />
+      <Header tienda={s.tienda} logo={s.logo} />
       {indice === 0 && <Titulo marca={s.marca} modelo={s.modelo} />}
       {indice > 0 && <Flecha hacia="izq" />}
       {indice < s.fotos.length - 1 && <Flecha hacia="der" />}

@@ -2,6 +2,7 @@ import { Composition } from "remotion";
 import "./index.css";
 import { POST } from "./brand/vmc";
 import { AutoSlide } from "./posts/AutoSlide";
+import { AutoGancho } from "./posts/GanchoSlide";
 import { SUBASTA } from "./subasta";
 
 /**
@@ -16,13 +17,30 @@ import { SUBASTA } from "./subasta";
  * others, change `indice` in the props panel.
  *
  * The reels are a project of their own, in `reels/remotion/`.
+ *
+ * `AutoGancho` es una variación de 2 slides (gancho desenfocado → revelación
+ * nítida), en paralelo a `Auto` — un experimento de engagement, no reemplaza
+ * el flujo de 4 fotos.
  */
 export const RemotionRoot: React.FC = () => (
-  <Composition
-    id="Auto"
-    component={AutoSlide}
-    defaultProps={{ s: SUBASTA, indice: 0 }}
-    durationInFrames={1}
-    {...POST}
-  />
+  <>
+    <Composition
+      id="Auto"
+      component={AutoSlide}
+      defaultProps={{ s: SUBASTA, indice: 0 }}
+      durationInFrames={1}
+      {...POST}
+    />
+    <Composition
+      id="AutoGancho"
+      component={AutoGancho}
+      defaultProps={{
+        s: SUBASTA,
+        indice: 0,
+        gancho: "¿Reconoces qué auto se esconde aquí?",
+      }}
+      durationInFrames={1}
+      {...POST}
+    />
+  </>
 );

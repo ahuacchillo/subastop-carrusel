@@ -36,6 +36,12 @@ export type Subasta = {
   /** Official store selling it. Its initial goes in the avatar. */
   tienda: string;
   /**
+   * Path inside `public/` to the store's real logo. Optional: most sellers
+   * don't have one on file yet, and the header falls back to the initial in
+   * a circle when it's missing.
+   */
+  logo?: string;
+  /**
    * Paths inside `public/`. Their order is the carousel order.
    * The first one is the cover: the only slide carrying make and model.
    */
@@ -51,5 +57,6 @@ export const SUBASTA: Subasta = {
   fecha: "10/08",
   hora: "1:35 pm",
   tienda: "Maquisistema",
+  logo: "vendedores/maf.svg",
   fotos: ["autos/toyota1.png", "autos/toyota2.png", "autos/toyota3.png"],
 };
