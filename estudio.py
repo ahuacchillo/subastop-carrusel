@@ -981,21 +981,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
             else:
                 salida.append(entrada["src"])
 
-        # El gancho ya no le quita nada al carrusel clásico -- es el mismo
-        # carrusel con un slide de intriga antepuesto -- así que dejó de ser
-        # una eleccion: todo carrusel nuevo lo lleva.
+        # "gancho" antepone un slide de intriga a las fotos de siempre;
+        # cualquier otro valor es el carrusel clásico. El estudio lo manda
+        # elegido en el toggle del topbar; "gancho" si no llega nada.
+        formato = c.get("formato") or "gancho"
+        if formato not in ("gancho", "clasico"):
+            formato = "gancho"
         datos = {
             "marca": d["marca"], "modelo": d["modelo"], "anio": d["anio"],
             "transmision": d["transmision"], "precioBase": "US$ " + d["precio"],
             "fecha": d["fecha"], "hora": d["hora"], "tienda": d["tienda"],
-            "fotos": salida, "formato": "gancho",
+            "fotos": salida, "formato": formato,
         }
         logo = logo_de(d["tienda"])
         if logo:
             datos["logo"] = logo
-        # Síncrono a propósito: render.mjs lee `gancho` de datos.json, así que
-        # tiene que existir antes de llamar a ajustar.sh --render.
-        datos["gancho"] = generar_gancho(d)
+        if formato == "gancho":
+            # Síncrono a propósito: render.mjs lee `gancho` de datos.json, así
+            # que tiene que existir antes de llamar a ajustar.sh --render.
+            datos["gancho"] = generar_gancho(d)
 
         with open(os.path.join(POSTS, slug, "datos.json"), "w", encoding="utf8") as f:
             json.dump(datos, f, ensure_ascii=False, indent=2)

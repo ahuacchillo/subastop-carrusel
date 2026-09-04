@@ -25,3 +25,5 @@ remotion/.webpack-cache
 Materiales/*
 !Materiales/cierre.png
 !Materiales/*.svg
+!Materiales/logos
+!Materiales/logos/*
