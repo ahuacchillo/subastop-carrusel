@@ -416,6 +416,16 @@ async function publicarMarcadas() {
 // es el numero que sale de la memoria del contenedor, no una preferencia.
 const EN_VUELO = 2;
 
+// Con gancho (portada desenfocada + pregunta de intriga) o normal (las fotos
+// de siempre): se elige una vez para toda la tanda, no oferta por oferta.
+let formatoLote = 'gancho';
+$('fmtLote').onclick = (e) => {
+  const b = e.target.closest('button[data-formato]');
+  if (!b) return;
+  formatoLote = b.dataset.formato;
+  $('fmtLote').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+};
+
 $('hacer').onclick = async () => {
   const cards = marcadas();
   if (!cards.length) return;
@@ -460,7 +470,8 @@ $('hacer').onclick = async () => {
         const r = await fetch('/lote', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ codigo: card.dataset.id,
-                                 nombre: card.dataset.nombre }) });
+                                 nombre: card.dataset.nombre,
+                                 formato: formatoLote }) });
         const j = await r.json();
         if (!j.ok) throw new Error(j.error || 'falló');
         llenar(el, j);

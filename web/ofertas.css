@@ -233,6 +233,16 @@
  .barra .paso{color:var(--ink-2);font-size:13px;flex:1 1 auto;min-width:8ch;
    font-variant-numeric:tabular-nums}
 
+ /* Gancho o normal, para toda la tanda: mismo par que el estudio individual,
+    en la escala de pill de esta pantalla. "Con gancho" por defecto. */
+ .fmt-toggle{display:flex;gap:4px}
+ .fmt-toggle button{height:34px;padding:0 13px;border-radius:999px;cursor:pointer;
+   font:600 12.5px Jakarta,system-ui,sans-serif;color:var(--ink-2);
+   border:1px solid var(--edge);background:transparent}
+ .fmt-toggle button:hover{background:var(--raise);color:var(--ink)}
+ .fmt-toggle button.on{color:#fff;border-color:rgba(255,255,255,.18);
+   background:linear-gradient(180deg,#9a79f2,var(--violet))}
+
  /* ═══════════════════════════════════════════════════════════════════════
     El modal de la tanda
     ═══════════════════════════════════════════════════════════════════════ */

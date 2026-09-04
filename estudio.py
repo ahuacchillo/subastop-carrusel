@@ -880,6 +880,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         slug = slugificar(pedido["codigo"], pedido["datos"]["marca"],
                           pedido["datos"]["modelo"])
         peticion = {"codigo": pedido["codigo"], "datos": pedido["datos"],
+                    "formato": c.get("formato") or "gancho",
                     "fotos": [{"archivo": f, "carpeta": pedido["carpeta"],
                                "foco": foco, "escala": 1}
                               for f, foco in zip(tres, focos)]}
