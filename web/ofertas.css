@@ -368,6 +368,22 @@
      navegando con teclado tiene que poder ver que llego ahi. */
   .slide:hover .slide-overlay,.slide:focus-visible .slide-overlay{opacity:1}
   .slide:focus-visible{outline:2px solid var(--violet-2);outline-offset:2px}
+  /* Mientras DeepSeek escribe otra pregunta: el slide se apaga y deja de
+     reaccionar, así un segundo clic no dispara una segunda regeneración. */
+  .slide.regenerando{opacity:.45;pointer-events:none}
+  /* Aparte del overlay de "Regenerar": siempre visible (no solo al hover),
+     porque marcar un gancho bueno es una decisión que se toma mirándolo, no
+     algo que se busca. */
+  .slide .gancho-bueno{position:absolute;top:8px;right:8px;z-index:2;
+    width:30px;height:30px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;padding:0;
+    background:rgba(14,11,20,.55);border:1px solid var(--edge-2);
+    backdrop-filter:var(--frost);-webkit-backdrop-filter:var(--frost);cursor:pointer}
+  .slide .gancho-bueno .ico{width:16px;height:16px;color:var(--ink)}
+  .slide .gancho-bueno:hover .ico{color:var(--orange)}
+  .slide .gancho-bueno.marcado{background:rgba(237,137,54,.2);border-color:var(--orange)}
+  .slide .gancho-bueno.marcado .ico{color:var(--orange);fill:var(--orange)}
+  .slide .gancho-bueno:disabled{cursor:default}
   /* Mientras se hace: la foto de la subasta en el primer hueco y los otros
      tres esperando. Un esqueleto dice cuanto falta; un spinner no. */
   .obra[data-fase=cola] .slide:empty,.obra[data-fase=haciendo] .slide:empty{

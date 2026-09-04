@@ -18,6 +18,9 @@ const ICO = {
   alerta: '<path d="M12 8.5v5"/><path d="M12 17v.01"/>' +
           '<path d="M12 3.5L2.8 19.5a1 1 0 0 0 .87 1.5h16.66a1 1 0 0 0 .87-1.5z"/>',
   editar: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>',
+  regenera: '<path d="M3 12a9 9 0 0 1 15.5-6.3L21 8"/><path d="M21 3v5h-5"/>' +
+            '<path d="M21 12a9 9 0 0 1-15.5 6.3L3 16"/><path d="M3 21v-5h5"/>',
+  estrella: '<path d="M12 3.5l2.6 5.6 6.1.6-4.6 4.1 1.3 6-5.4-3.2-5.4 3.2 1.3-6-4.6-4.1 6.1-.6z"/>',
 };
 const ico = (n, clase) =>
   `<svg class="ico ${clase || ''}" viewBox="0 0 24 24" fill=none stroke=currentColor
@@ -180,35 +183,105 @@ function llenar(el, j) {
 
 function pintarSlidesBloque(el, j) {
   const slidesCont = el.querySelector('.obra-slides');
+  const ultimo = j.slides.length - 1;   // la placa de cierre, nunca editable
+  // El gancho antepone un slide de intriga que no es ninguna foto de
+  // `j.fotos` (el resto sí son, una por una, en el mismo orden). Si hay un
+  // slide de más entre `slides` y `fotos` + cierre, ese primero es el
+  // gancho: se nota, no se edita, y las fotos arrancan un slide más tarde.
+  const desfase = ultimo > (j.fotos || []).length ? 1 : 0;
   slidesCont.innerHTML = (j.slides || []).map((u, n) => {
-    const esCierre = n === (j.slides.length - 1);
-    const overlay = esCierre ? '' : `<div class="slide-overlay">${ico('editar')}<span>Ajustar</span></div>`;
-    // tabindex+role+aria-label solo en las editables: la placa de cierre no
-    // reacciona a nada, marcarla como boton seria prometer una accion que no
-    // existe.
-    const foco = esCierre ? '' : `tabindex=0 role=button aria-label="Reencuadrar foto ${n + 1}"`;
-    return `<figure class="slide" data-idx="${n}" ${foco}
-      title="${esCierre ? 'Placa de cierre' : 'Clic para reencuadrar y ajustar'}">
+    const esCierre = n === ultimo;
+    const esGancho = desfase === 1 && n === 0;
+    // Editable (reencuadre) o regenerable (gancho): las dos reaccionan a un
+    // clic, solo que a acciones distintas. Solo el cierre queda quieto.
+    const overlay = esGancho
+      ? `<div class="slide-overlay">${ico('regenera')}<span>Regenerar</span></div>`
+      : !esCierre
+      ? `<div class="slide-overlay">${ico('editar')}<span>Ajustar</span></div>`
+      : '';
+    // tabindex+role+aria-label solo en lo que reacciona a algo: la placa de
+    // cierre no, marcarla como boton seria prometer una accion que no existe.
+    const etiqueta = esGancho ? 'Regenerar la pregunta de intriga'
+                              : `Reencuadrar foto ${n - desfase + 1}`;
+    const foco = esCierre ? '' : `tabindex=0 role=button aria-label="${etiqueta}"`;
+    const titulo = esCierre ? 'Placa de cierre'
+      : esGancho ? 'Clic para probar otra pregunta'
+      : 'Clic para reencuadrar y ajustar';
+    // Botón aparte, no el overlay: "bueno" y "regenerar" son dos acciones
+    // sobre el mismo gancho, y una no puede tapar a la otra.
+    const bueno = esGancho
+      ? `<button type=button class="gancho-bueno" title="Guardar esta pregunta como ejemplo de buen gancho">${ico('estrella')}</button>`
+      : '';
+    return `<figure class="slide" data-idx="${n}" ${foco} title="${titulo}">
       <img src="${u}" alt="Slide ${n + 1}" loading="lazy">
       ${overlay}
+      ${bueno}
     </figure>`;
   }).join('');
 
-  // Clic o teclado (Enter/Espacio) editan las fotos del auto (slides 0, 1, 2):
-  // antes solo el mouse podia abrir el editor, y no habia forma de llegar ahi
-  // navegando solo con teclado.
+  // Clic o teclado (Enter/Espacio): antes solo el mouse podia disparar la
+  // accion, y no habia forma de llegar ahi navegando solo con teclado.
   slidesCont.querySelectorAll('.slide').forEach(fig => {
-    const idx = parseInt(fig.dataset.idx, 10);
-    if (idx < (j.slides.length - 1)) {
-      fig.onclick = () => abrirEditorFoto(el, idx);
-      fig.onkeydown = e => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          abrirEditorFoto(el, idx);
-        }
-      };
-    }
+    const n = parseInt(fig.dataset.idx, 10);
+    if (n === ultimo) return;                    // la placa de cierre, quieta
+    const accion = (desfase === 1 && n === 0)
+      ? () => regenerarGancho(el)
+      : () => abrirEditorFoto(el, n - desfase);
+    fig.onclick = accion;
+    fig.onkeydown = e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); accion(); }
+    };
   });
+  // Aparte del clic del slide: si burbujeara dispararía "Regenerar" a la vez.
+  const botonBueno = slidesCont.querySelector('.gancho-bueno');
+  if (botonBueno) botonBueno.onclick = e => { e.stopPropagation(); marcarGanchoBueno(el); };
+}
+
+// Nueva pregunta de gancho para un carrusel ya armado: re-renderiza un solo
+// PNG (el slide 1) y no toca las fotos, así que es mucho más rápido que
+// rehacer el carrusel entero solo para probar otra frase.
+async function regenerarGancho(el) {
+  const slug = el.dataset.slug;
+  const fig = el.querySelector('.slide[data-idx="0"]');
+  fig.classList.add('regenerando');
+  dice(el, 'yendo', 'Probando otra pregunta…');
+  try {
+    const r = await fetch('/regenerar-gancho', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'No se pudo regenerar');
+    el._datosLote.slides = j.slides;
+    pintarSlidesBloque(el, el._datosLote);
+    dice(el, 'ok', 'Nueva pregunta de gancho');
+  } catch (err) {
+    fig.classList.remove('regenerando');
+    dice(el, 'mal', err.message);
+  }
+}
+
+// Guarda el gancho actual en la lista de referencia
+// (`Materiales/ganchos-buenos.json`): la próxima vez que se regenere un
+// gancho, DeepSeek los lee para entender qué tono y qué fórmula enganchan,
+// sin copiarlos.
+async function marcarGanchoBueno(el) {
+  const slug = el.dataset.slug;
+  const btn = el.querySelector('.gancho-bueno');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/gancho-bueno', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'No se pudo guardar');
+    btn.classList.add('marcado');
+    dice(el, 'ok', 'Guardado como buen gancho');
+  } catch (err) {
+    btn.disabled = false;
+    dice(el, 'mal', err.message);
+  }
 }
 
 // Y lo que llega cuando se cae. El error del lote casi siempre es que la web
