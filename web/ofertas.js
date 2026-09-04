@@ -207,14 +207,18 @@ function pintarSlidesBloque(el, j) {
     const titulo = esCierre ? 'Placa de cierre'
       : esGancho ? 'Clic para probar otra pregunta'
       : 'Clic para reencuadrar y ajustar';
-    // Botón aparte, no el overlay: "bueno" y "regenerar" son dos acciones
-    // sobre el mismo gancho, y una no puede tapar a la otra.
+    // Botones aparte, no el overlay: "bueno", "editar" y "regenerar" son tres
+    // acciones sobre el mismo gancho, y ninguna puede tapar a las otras.
     const bueno = esGancho
       ? `<button type=button class="gancho-bueno" title="Guardar esta pregunta como ejemplo de buen gancho">${ico('estrella')}</button>`
+      : '';
+    const editar = esGancho
+      ? `<button type=button class="gancho-editar" title="Escribir la pregunta a mano">${ico('editar')}</button>`
       : '';
     return `<figure class="slide" data-idx="${n}" ${foco} title="${titulo}">
       <img src="${u}" alt="Slide ${n + 1}" loading="lazy">
       ${overlay}
+      ${editar}
       ${bueno}
     </figure>`;
   }).join('');
@@ -235,6 +239,8 @@ function pintarSlidesBloque(el, j) {
   // Aparte del clic del slide: si burbujeara dispararía "Regenerar" a la vez.
   const botonBueno = slidesCont.querySelector('.gancho-bueno');
   if (botonBueno) botonBueno.onclick = e => { e.stopPropagation(); marcarGanchoBueno(el); };
+  const botonEditar = slidesCont.querySelector('.gancho-editar');
+  if (botonEditar) botonEditar.onclick = e => { e.stopPropagation(); editarGanchoManual(el); };
 }
 
 // Nueva pregunta de gancho para un carrusel ya armado: re-renderiza un solo
@@ -253,8 +259,40 @@ async function regenerarGancho(el) {
     const j = await r.json();
     if (!j.ok) throw new Error(j.error || 'No se pudo regenerar');
     el._datosLote.slides = j.slides;
+    el._datosLote.gancho = j.gancho;
     pintarSlidesBloque(el, el._datosLote);
     dice(el, 'ok', 'Nueva pregunta de gancho');
+  } catch (err) {
+    fig.classList.remove('regenerando');
+    dice(el, 'mal', err.message);
+  }
+}
+
+// La pregunta escrita a mano, cuando la que se le ocurrió a alguien es mejor
+// que la del modelo. Mismo render de un solo slide que "Regenerar", sin
+// pasar por DeepSeek.
+async function editarGanchoManual(el) {
+  const actual = el._datosLote.gancho || '';
+  const texto = window.prompt('Pregunta o frase de intriga para la portada:', actual);
+  if (texto === null) return;                      // canceló
+  const limpio = texto.trim();
+  if (!limpio || limpio === actual) return;
+
+  const slug = el.dataset.slug;
+  const fig = el.querySelector('.slide[data-idx="0"]');
+  fig.classList.add('regenerando');
+  dice(el, 'yendo', 'Guardando la pregunta…');
+  try {
+    const r = await fetch('/gancho-manual', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slug, gancho: limpio }),
+    });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.error || 'No se pudo guardar');
+    el._datosLote.slides = j.slides;
+    el._datosLote.gancho = j.gancho;
+    pintarSlidesBloque(el, el._datosLote);
+    dice(el, 'ok', 'Pregunta guardada');
   } catch (err) {
     fig.classList.remove('regenerando');
     dice(el, 'mal', err.message);

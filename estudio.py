@@ -677,6 +677,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                       "/publicar": self.publicar,
                       "/reencuadrar": self.reencuadrar,
                       "/regenerar-gancho": self.regenerar_gancho,
+                      "/gancho-manual": self.gancho_manual,
                       "/gancho-bueno": self.gancho_bueno,
                       "/galeria": self.galeria,
                       "/revisar-fotos": self.revisar_fotos}.get(self.path)
@@ -737,21 +738,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 json.dump(buenos, f, ensure_ascii=False, indent=2)
         return {"total": len(buenos)}
 
-    def regenerar_gancho(self, c):
-        """Una pregunta de gancho nueva para un carrusel ya armado, sin
-        rehacer las fotos: escribe `datos.json` y llama a `render.mjs` con el
-        índice 0 nada más, así el resto de los PNG no se toca."""
+    def _leer_gancho(self, c):
+        """El datos.json de un carrusel de gancho ya armado, o el error que
+        explica por qué no. Comparten esta lectura `regenerar_gancho` y
+        `gancho_manual` -- las dos formas de cambiar la misma línea."""
         slug = seguro(str(c.get("slug", "")))
         datos_path = os.path.join(POSTS, slug, "datos.json")
         if not os.path.isfile(datos_path):
             raise ValueError(f"No existe datos.json para {slug}")
-
         with open(datos_path, encoding="utf8") as f:
             d = json.load(f)
         if d.get("formato") != "gancho":
             raise ValueError("Este carrusel no tiene slide de gancho.")
+        return slug, datos_path, d
 
-        d["gancho"] = generar_gancho(d)
+    def _guardar_gancho(self, slug, datos_path, d):
+        """Escribe el `gancho` nuevo en datos.json y renderiza solo el slide
+        0 -- `render.mjs` con índice, así el resto de los PNG no se toca."""
         with open(datos_path, "w", encoding="utf8") as f:
             json.dump(d, f, ensure_ascii=False, indent=2)
 
@@ -766,6 +769,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
         v = int(time.time())
         return {"slug": slug, "slides": [f"/post/{slug}/{p}?v={v}" for p in pngs],
                 "gancho": d["gancho"]}
+
+    def regenerar_gancho(self, c):
+        """Una pregunta de gancho nueva para un carrusel ya armado, sin
+        rehacer las fotos ni pasar por el resto del render."""
+        slug, datos_path, d = self._leer_gancho(c)
+        d["gancho"] = generar_gancho(d)
+        return self._guardar_gancho(slug, datos_path, d)
+
+    def gancho_manual(self, c):
+        """El gancho escrito a mano: mismo camino que regenerar_gancho, sin
+        pasar por DeepSeek -- para cuando la pregunta que se le ocurrió a
+        alguien es mejor que la que escribe el modelo."""
+        texto = str(c.get("gancho", "")).strip()
+        if not texto:
+            raise ValueError("El gancho no puede quedar vacío.")
+        slug, datos_path, d = self._leer_gancho(c)
+        d["gancho"] = texto
+        return self._guardar_gancho(slug, datos_path, d)
 
     def reencuadrar(self, c):
         """Ajusta foco/escala de un slide de un carrusel existente y
@@ -902,7 +923,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 copy_text = f.read()
         return {"slug": hecho["slug"], "fotos": hecho.get("fotos", tres), "siniestrado": chocado,
                 "slides": hecho["slides"], "copy": copy_text,
-                "nombre": c.get("nombre", "")}
+                "gancho": hecho.get("gancho", ""), "nombre": c.get("nombre", "")}
 
     def descargar_lote(self, slugs):
         """Los carruseles de una tanda en un solo ZIP, cada uno en su carpeta.
@@ -1015,7 +1036,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # The ?v= keeps the browser from serving the previous render from cache.
         import time as _t
         v = int(_t.time())
-        return {"slug": slug, "slides": [f"/post/{slug}/{p}?v={v}" for p in pngs], "fotos": salida}
+        return {"slug": slug, "slides": [f"/post/{slug}/{p}?v={v}" for p in pngs],
+                "fotos": salida, "gancho": datos.get("gancho", "")}
 
     def generar_copy(self, c):
         """Write the caption with the `vmc-ig-copy-ficha-tecnica` skill.

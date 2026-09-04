@@ -394,6 +394,15 @@
   .slide .gancho-bueno.marcado{background:rgba(237,137,54,.2);border-color:var(--orange)}
   .slide .gancho-bueno.marcado .ico{color:var(--orange);fill:var(--orange)}
   .slide .gancho-bueno:disabled{cursor:default}
+  /* Misma idea que "bueno", en la esquina opuesta: escribir la pregunta a
+     mano es una decisión tan directa como marcarla de buena. */
+  .slide .gancho-editar{position:absolute;top:8px;left:8px;z-index:2;
+    width:30px;height:30px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;padding:0;
+    background:rgba(14,11,20,.55);border:1px solid var(--edge-2);
+    backdrop-filter:var(--frost);-webkit-backdrop-filter:var(--frost);cursor:pointer}
+  .slide .gancho-editar .ico{width:15px;height:15px;color:var(--ink)}
+  .slide .gancho-editar:hover .ico{color:var(--violet-2)}
   /* Mientras se hace: la foto de la subasta en el primer hueco y los otros
      tres esperando. Un esqueleto dice cuanto falta; un spinner no. */
   .obra[data-fase=cola] .slide:empty,.obra[data-fase=haciendo] .slide:empty{
